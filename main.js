@@ -14,6 +14,20 @@ import { addToSteam, addSelfToSteam } from './electron/steamShortcuts.js';
 import { downloadRom } from './electron/downloads.js';
 import { makeLogger, readConfig, writeConfig, getLogPath, getConfigPath } from './electron/config.js';
 import { getEmulatorCommands } from './electron/launchers.js';
+import {
+  listGameSaves,
+  getSaveStatus,
+  pushSaves,
+  pullSaves,
+  deleteCachedSave,
+  listAllCachedGames,
+  listAllGamesWithSaves,
+  deleteSaveFile,
+  snapshotGame,
+  startSaveWatcher,
+  stopSaveWatcher,
+  stopAllWatchers,
+} from './electron/saveManager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logger = makeLogger();
@@ -48,7 +62,10 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  stopAllWatchers();
+  if (process.platform !== 'darwin') app.quit();
+});
 
 ipcMain.handle('ping', () => 'pong');
 ipcMain.handle('get-config', readConfig);
@@ -83,8 +100,50 @@ ipcMain.handle('delete-file', async (_e, filePath) => {
 
 ipcMain.handle('download-rom', (event, payload) => downloadRom({ ...payload, sender: event.sender }, logger));
 
-ipcMain.handle('launch-game', (_e, payload) => launchGame(payload, logger));
+ipcMain.handle('launch-game', async (_e, payload) => {
+  return await launchGame(payload, logger);
+});
 ipcMain.handle('run-cloud-sync', (_e, action) => runCloudSync(action, logger));
+
+ipcMain.handle('list-game-saves', async (_e, payload) => {
+  return await listGameSaves(payload);
+});
+ipcMain.handle('get-save-status', async (_e, payload) => {
+  return await getSaveStatus(payload);
+});
+ipcMain.handle('push-saves', async (event, payload) => {
+  return await pushSaves({ ...payload, sender: event.sender, logInfo: logger.info, logError: logger.error });
+});
+ipcMain.handle('pull-saves', async (event, payload) => {
+  return await pullSaves({ ...payload, sender: event.sender, logInfo: logger.info, logError: logger.error });
+});
+ipcMain.handle('delete-cached-save', async (_e, payload) => {
+  return await deleteCachedSave(payload);
+});
+ipcMain.handle('delete-save-file', async (_e, payload) => {
+  return await deleteSaveFile(payload);
+});
+ipcMain.handle('list-all-cached-games', async (_e, payload) => {
+  return await listAllCachedGames(payload || {});
+});
+ipcMain.handle('list-games-with-saves', async (_e, payload) => {
+  return await listAllGamesWithSaves(payload);
+});
+ipcMain.handle('snapshot-game', async (event, payload) => {
+  return await snapshotGame({ ...payload, logInfo: logger.info, logError: logger.error });
+});
+ipcMain.handle('start-save-watcher', async (_e, payload) => {
+  const { gameKey, ...opts } = payload || {};
+  if (!gameKey) return { success: false, error: 'gameKey required' };
+  startSaveWatcher(gameKey, { ...opts, logInfo: logger.info, logError: logger.error });
+  return { success: true };
+});
+ipcMain.handle('stop-save-watcher', async (_e, payload) => {
+  const { gameKey } = payload || {};
+  if (!gameKey) return { success: false, error: 'gameKey required' };
+  stopSaveWatcher(gameKey);
+  return { success: true };
+});
 
 ipcMain.handle('add-to-steam', (_e, payload) => addToSteam(payload, { ...logger, resolveCommands: getEmulatorCommands }));
 ipcMain.handle('add-self-to-steam', () => addSelfToSteam(logger));

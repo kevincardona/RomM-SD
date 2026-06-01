@@ -32,7 +32,7 @@ function activateActive() {
 
 export function useController({
   onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu,
-} = {}) {
+} = {}, disabled = false) {
   const held = useRef({});
   const axisState = useRef({});
   const lastFire = useRef({});
@@ -79,8 +79,17 @@ export function useController({
   }, []);
 
   const handleButton = useCallback(({ button, state }) => {
+    if (state === 'up') {
+      delete held.current[button];
+      if (button === 'leftTrigger' || button === 'rightTrigger') {
+        delete lastFire.current[button];
+      }
+      return;
+    }
     if (state !== 'down') return;
+    if (disabled) return;
     const inText = isTextFieldFocused();
+    const inModal = !!document.activeElement?.closest('.modal-overlay');
 
     switch (button) {
       case 'dpadUp':
@@ -92,54 +101,48 @@ export function useController({
 
       case 'a': {
         if (inText) { fireKey('Enter'); return; }
-        if (onConfirm) { onConfirm(); return; }
         if (activateActive()) return;
+        if (onConfirm) { onConfirm(); return; }
         fireKey('Enter');
         window.electronAPI?.controllerRumble({ low: 0.2, high: 0.4, duration: 80 });
         return;
       }
       case 'b': {
         if (inText) { fireKey('Escape'); return; }
-        if (onBack) { onBack(); return; }
         if (activateActive()) return;
+        if (onBack) { onBack(); return; }
         fireKey('Escape');
         window.electronAPI?.controllerRumble({ low: 0.1, high: 0.1, duration: 50 });
         return;
       }
       case 'y': {
-        if (inText) { fireKey('Tab'); return; }
+        if (inText || inModal) { fireKey('Tab'); return; }
         if (onSearchFocus) onSearchFocus();
         return;
       }
       case 'start': {
-        if (inText) return;
+        if (inText || inModal) return;
         if (onContextMenu) onContextMenu();
         return;
       }
       case 'leftTrigger': {
-        if (inText) return;
+        if (inText || inModal) return;
         if (!canFire('leftTrigger')) return;
         onLetterPrev && onLetterPrev();
         return;
       }
       case 'rightTrigger': {
-        if (inText) return;
+        if (inText || inModal) return;
         if (!canFire('rightTrigger')) return;
         onLetterNext && onLetterNext();
         return;
       }
       default: return;
     }
-  }, [onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu, press]);
-
-  const handleButtonUp = useCallback(({ button }) => {
-    delete held.current[button];
-    if (button === 'leftTrigger' || button === 'rightTrigger') {
-      delete lastFire.current[button];
-    }
-  }, []);
+  }, [onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu, press, disabled]);
 
   const handleAxis = useCallback(({ axis, value }) => {
+    if (disabled) return;
     let direction = null;
     if (axis === 'leftX') {
       if (value >  STICK_ENGAGE) direction = 'right';
@@ -166,12 +169,13 @@ export function useController({
     } else {
       axisState.current[axis] = { direction, lastValue: value, nextFire: prev?.nextFire };
     }
-  }, []);
+  }, [disabled]);
 
   useEffect(() => {
     let running = true;
     function tick() {
       if (!running) return;
+      if (disabled) { rafRef.current = requestAnimationFrame(tick); return; }
       const now = Date.now();
       for (const [btn, s] of Object.entries(held.current)) {
         if (s && now >= s.nextFire) {
@@ -198,15 +202,13 @@ export function useController({
 
   useEffect(() => {
     if (!window.electronAPI) return;
-    window.electronAPI.onControllerButton(handleButton);
-    window.electronAPI.onControllerButton(handleButtonUp);
-    window.electronAPI.onControllerAxis(handleAxis);
+    const offButton = window.electronAPI.onControllerButton(handleButton);
+    const offAxis = window.electronAPI.onControllerAxis(handleAxis);
     return () => {
-      window.electronAPI.offControllerButton(handleButton);
-      window.electronAPI.offControllerButton(handleButtonUp);
-      window.electronAPI.offControllerAxis(handleAxis);
+      offButton && offButton();
+      offAxis && offAxis();
     };
-  }, [handleButton, handleButtonUp, handleAxis]);
+  }, [handleButton, handleAxis]);
 
   useEffect(() => {
     const onKey = (e) => {

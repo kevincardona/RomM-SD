@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import GameCard from '../components/GameCard';
+import FilterBar from '../components/FilterBar';
 
 function groupByLetter(games) {
   const out = new Map();
@@ -12,7 +13,11 @@ function groupByLetter(games) {
   return out;
 }
 
-export default function LibraryPage({ title, games, token, onGameSelect, config, onRegisterLetterNav }) {
+export default function LibraryPage({
+  title, games, token, onGameSelect, config, onRegisterLetterNav,
+  library, selectedPlatform, onPlatformChange, downloadedOnly, onDownloadedChange, showDownloadedToggle,
+  collections, selectedCollection, onCollectionChange, onBackToCollectionsRoot,
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(50);
   const [overlayKey, setOverlayKey] = useState(null);
@@ -138,6 +143,21 @@ export default function LibraryPage({ title, games, token, onGameSelect, config,
           }}
         />
       </div>
+      {library && (
+        <FilterBar
+          games={games}
+          library={library}
+          selectedPlatform={selectedPlatform}
+          onPlatformChange={onPlatformChange}
+          downloadedOnly={downloadedOnly}
+          onDownloadedChange={onDownloadedChange}
+          showDownloaded={showDownloadedToggle}
+          collections={collections}
+          selectedCollection={selectedCollection}
+          onCollectionChange={onCollectionChange}
+          onBackToCollectionsRoot={onBackToCollectionsRoot}
+        />
+      )}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         <div className="content-area" ref={contentRef} onScroll={handleScroll} style={{ flex: 1 }}>
           <div className="game-grid" style={{ '--grid-card-width': gridVar }}>

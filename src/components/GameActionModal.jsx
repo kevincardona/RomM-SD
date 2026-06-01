@@ -5,6 +5,7 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
   const [fileSize, setFileSize] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [autoSync, setAutoSync] = useState(true);
   const wasDownloading = useRef(game.downloadProgress !== undefined && game.downloadProgress < 100);
   const [justCompleted, setJustCompleted] = useState(false);
 
@@ -27,6 +28,18 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
   const handlePlay = async () => {
     setErrorMsg(null);
     try {
+      if (autoSync) {
+        const homeDir = await window.electronAPI.getHomeDir();
+        await window.electronAPI.snapshotGame({
+          localPath: game.localPath, emuFolder: game.emuFolder,
+          emudeckPath: config?.emudeckPath, homeDir,
+        });
+        await window.electronAPI.startSaveWatcher({
+          gameKey: `${game.emuFolder}::${game.filename}`,
+          localPath: game.localPath, emuFolder: game.emuFolder,
+          emudeckPath: config?.emudeckPath, homeDir,
+        });
+      }
       const res = await window.electronAPI.launchGame({ localPath: game.localPath, emuFolder: game.emuFolder });
       if (res.success) onClose();
       else setErrorMsg(res.error);
@@ -63,6 +76,18 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
                 {errorMsg && <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(255,0,0,0.2)', color: '#ff4444', borderRadius: '4px', fontSize: '0.85rem' }}>{errorMsg}</div>}
                 {successMsg && <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(76,175,80,0.2)', color: '#4caf50', borderRadius: '4px', fontSize: '0.85rem' }}>{successMsg}</div>}
 
+                <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginTop: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoSync}
+                    onChange={e => setAutoSync(e.target.checked)}
+                    style={{ width: '16px', height: '16px', flex: '0 0 auto', margin: 0 }}
+                  />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    Auto-sync saves (push when emulator writes)
+                  </span>
+                </label>
+
                 <button className="btn" style={{ width: '100%', marginTop: '15px', background: '#4caf50', color: 'white', borderColor: '#4caf50' }} tabIndex={0} onClick={handlePlay} autoFocus>▶ Play Now</button>
                 <button className="btn" style={{ width: '100%', marginTop: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'transparent' }} tabIndex={0} onClick={handleAddToSteam}>+ Add to Steam</button>
               </div>
@@ -71,8 +96,14 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
           </div>
 
           {game.downloadProgress !== undefined && game.downloadProgress < 100 && (
-            <div style={{ width: '100%', background: '#333', height: '10px', borderRadius: '5px', marginBottom: '20px', overflow: 'hidden' }}>
-              <div style={{ width: `${game.downloadProgress}%`, background: 'var(--primary)', height: '100%', transition: 'width 0.2s' }}></div>
+            <div style={{ marginBottom: '20px' }}>
+              <div className="progress-bar-label">
+                <span>Downloading</span>
+                <span>{Math.round(game.downloadProgress)}%</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-bar-fill" style={{ width: `${Math.max(game.downloadProgress, 2)}%` }}></div>
+              </div>
             </div>
           )}
 

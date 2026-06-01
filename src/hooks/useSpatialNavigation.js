@@ -1,13 +1,22 @@
 import { useEffect } from 'react';
 
-export function useSpatialNavigation() {
+export function useSpatialNavigation(disabled = false) {
   useEffect(() => {
+    if (disabled) return;
     const handleKeyDown = (e) => {
       const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
       if (!keys.includes(e.key)) return;
 
       const current = document.activeElement;
-      const focusable = Array.from(document.querySelectorAll('[tabIndex]:not([tabIndex="-1"])'));
+      const currentModal = current?.closest('.modal-overlay') || null;
+
+      const focusable = Array.from(document.querySelectorAll('[tabIndex]:not([tabIndex="-1"]):not([disabled])'))
+        .filter(el => {
+          if (currentModal) {
+            return el.closest('.modal-overlay') === currentModal;
+          }
+          return !el.closest('.modal-overlay');
+        });
 
       if (focusable.length === 0) return;
 
@@ -61,8 +70,7 @@ export function useSpatialNavigation() {
         e.preventDefault();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [disabled]);
 }

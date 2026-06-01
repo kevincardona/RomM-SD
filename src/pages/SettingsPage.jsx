@@ -1,6 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useId } from 'react';
 
-export default function SettingsPage({ config, setConfig, onSave, error }) {
+function EyeIcon({ open }) {
+  return open ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit, revealable = false, saved = false }) {
+  const inputRef = useRef(null);
+  const [focused, setFocused] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const inputId = useId();
+
+  const effectiveType = revealable ? (revealed ? 'text' : 'password') : type;
+
+  const activate = (e) => {
+    if (e) e.preventDefault();
+    inputRef.current?.focus();
+    inputRef.current?.select();
+    window.electronAPI?.showKeyboard?.();
+  };
+
+  return (
+    <div
+      className={`editable-setting ${focused ? 'focused' : ''}`}
+      onClick={(e) => { if (e.target === inputRef.current) return; activate(e); }}
+    >
+      <label
+        htmlFor={inputId}
+        onClick={(e) => { e.preventDefault(); activate(e); }}
+        style={{ flex: '0 0 180px', minWidth: 0, fontWeight: 500, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '2px' }}
+      >
+        <span>{label}</span>
+        {saved && <span style={{ fontSize: '0.65rem', color: 'var(--accent-color)' }}>✓ saved</span>}
+      </label>
+      {revealable ? (
+        <div className="password-field">
+          <input
+            id={inputId}
+            ref={inputRef}
+            type={effectiveType}
+            tabIndex={-1}
+            placeholder={hint}
+            value={value || ''}
+            onChange={onChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => { setFocused(false); onCommit && onCommit(); }}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
+            style={{
+              padding: '10px 16px',
+              background: 'rgba(255,255,255,0.04)',
+              border: focused ? '1px solid var(--accent-color)' : '1px solid var(--panel-border)',
+              borderRadius: '8px',
+              color: 'var(--text-main)',
+              fontSize: '1rem',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+            }}
+          />
+          <button
+            type="button"
+            className="password-toggle"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); setRevealed(r => !r); inputRef.current?.focus(); }}
+            aria-label={revealed ? 'Hide password' : 'Show password'}
+          >
+            <EyeIcon open={revealed} />
+          </button>
+        </div>
+      ) : (
+        <input
+          id={inputId}
+          ref={inputRef}
+          type={effectiveType}
+          tabIndex={-1}
+          placeholder={hint}
+          value={value || ''}
+          onChange={onChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { setFocused(false); onCommit && onCommit(); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '10px 16px',
+            background: 'rgba(255,255,255,0.04)',
+            border: focused ? '1px solid var(--accent-color)' : '1px solid var(--panel-border)',
+            borderRadius: '8px',
+            color: 'var(--text-main)',
+            fontSize: '1rem',
+            outline: 'none',
+            transition: 'border-color 0.2s',
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function SettingsPage({ config, setConfig, onSave, error, onRerunWizard }) {
   const [logs, setLogs] = useState('');
   const [showLogs, setShowLogs] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
@@ -50,70 +156,57 @@ export default function SettingsPage({ config, setConfig, onSave, error }) {
     <div className="content-area">
       <h2>Settings</h2>
       {error && <div style={{ color: '#ff4444', marginBottom: '20px', background: 'rgba(255,0,0,0.1)', padding: '10px', borderRadius: '8px' }}>{error}</div>}
-      
+
       <div className="settings-form">
-        <label>
-          RomM Server URL
-          <input 
-            type="text" 
-            placeholder="http://192.168.1.100:3000" 
+        <EditableSetting
+          label="RomM Server URL"
+          hint="http://192.168.1.100:3000"
+          value={config.url}
+          onChange={e => setConfig({...config, url: e.target.value})}
+        />
+        <EditableSetting
+          label="Username"
+          hint="admin"
+          value={config.username}
+          onChange={e => setConfig({...config, username: e.target.value})}
+        />
+        <EditableSetting
+          label="Password"
+          hint="••••••••"
+          type="password"
+          revealable
+          value={config.password}
+          saved={!!config.password}
+          onChange={e => setConfig({...config, password: e.target.value})}
+        />
+        <EditableSetting
+          label="EmuDeck ROMs Folder Path"
+          hint="~/Emulation/roms"
+          value={config.emudeckPath}
+          onChange={e => setConfig({...config, emudeckPath: e.target.value})}
+        />
+        <div className="settings-row">
+          <span style={{ flex: '0 0 auto', minWidth: '180px', fontWeight: 500 }}>Grid Cover Size</span>
+          <select
             tabIndex={0}
-            value={config.url}
-            onChange={e => setConfig({...config, url: e.target.value})}
-          />
-        </label>
-        <label>
-          Username
-          <input 
-            type="text" 
-            placeholder="admin" 
-            tabIndex={0}
-            value={config.username}
-            onChange={e => setConfig({...config, username: e.target.value})}
-          />
-        </label>
-        <label>
-          Password
-          <input 
-            type="password" 
-            placeholder="••••••••" 
-            tabIndex={0}
-            value={config.password}
-            onChange={e => setConfig({...config, password: e.target.value})}
-          />
-        </label>
-        <label>
-          EmuDeck ROMs Folder Path
-          <input 
-            type="text" 
-            placeholder="~/Emulation/roms" 
-            tabIndex={0}
-            value={config.emudeckPath}
-            onChange={e => setConfig({...config, emudeckPath: e.target.value})}
-          />
-        </label>
-        <label>
-          Grid Cover Size
-          <select 
-            tabIndex={0}
-            value={config.gridSize || 'medium'} 
+            value={config.gridSize || 'medium'}
             onChange={e => setConfig({...config, gridSize: e.target.value})}
-            style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.05)', color: 'white' }}
+            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.05)', color: 'white' }}
           >
             <option value="small">Small</option>
             <option value="medium">Medium</option>
             <option value="large">Large</option>
           </select>
-        </label>
+        </div>
         
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer', minWidth: 0 }}>
           <input
             type="checkbox"
             checked={config.showGameTitles !== false}
             onChange={e => setConfig({...config, showGameTitles: e.target.checked})}
-            style={{ width: '18px', height: '18px', margin: 0 }}
+            style={{ width: '18px', height: '18px', margin: 0, flex: '0 0 auto' }}
           />
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 'bold' }}>Show Text on Game Tiles</div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Display game titles and platforms underneath cover artwork.</div>
           </div>
@@ -151,6 +244,16 @@ export default function SettingsPage({ config, setConfig, onSave, error }) {
               {selfSteamMsg}
             </div>
           )}
+        </div>
+
+        <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--panel-border)' }}>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Setup Wizard</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+            Re-run the first-time setup wizard to reconfigure your server, ROMs path, or test the connection.
+          </div>
+          <button className="btn" tabIndex={0} onClick={onRerunWizard}>
+            Re-run Setup Wizard
+          </button>
         </div>
 
         {diagnostics && (

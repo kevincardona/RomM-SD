@@ -16,16 +16,20 @@ export async function downloadRom({ id, url, destinationPath, token, sender }, {
     const totalBytes = parseInt(response.headers.get('content-length') || '0', 10);
     let downloadedBytes = 0;
     const fileStream = createWriteStream(destinationPath);
-    let lastReport = 0;
+    let lastReportTime = 0;
+    let lastReportedPercent = 0;
 
     for await (const chunk of response.body) {
       fileStream.write(chunk);
       downloadedBytes += chunk.length;
-      const now = Date.now();
-      if (totalBytes > 0 && now - lastReport > 200) {
+      if (totalBytes > 0) {
         const percent = (downloadedBytes / totalBytes) * 100;
-        sender?.send('download-progress', { id, percent });
-        lastReport = now;
+        const now = Date.now();
+        if (percent - lastReportedPercent >= 1 || now - lastReportTime > 100) {
+          sender?.send('download-progress', { id, percent });
+          lastReportTime = now;
+          lastReportedPercent = percent;
+        }
       }
     }
     fileStream.end();

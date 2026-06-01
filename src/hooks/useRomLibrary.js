@@ -5,6 +5,7 @@ const DEFAULT_CONFIG = {
   url: '', username: '', password: '',
   token: '', emudeckPath: '~/Emulation/roms',
   gridSize: 'medium', showGameTitles: true,
+  saveSyncEnabled: false, browserPlayEnabled: false,
 };
 
 function isValidRom(g) {
@@ -33,6 +34,7 @@ export function useRomLibrary() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedGame, setSelectedGame] = useState(null);
+  const [showWizard, setShowWizard] = useState(false);
 
   const decorateGames = useCallback(async (games, basePath) => {
     const homeDir = await window.electronAPI.getHomeDir();
@@ -85,13 +87,14 @@ export function useRomLibrary() {
         const defaultPath = await detectDefaultPath();
         setConfig(prev => ({ ...prev, emudeckPath: defaultPath }));
         setLoading(false);
+        setShowWizard(true);
       }
     })();
   }, [loadLibrary]);
 
   useEffect(() => {
     if (!window.electronAPI?.onDownloadProgress) return;
-    return window.electronAPI.onDownloadProgress(({ id, percent }) => {
+    const unsubscribe = window.electronAPI.onDownloadProgress(({ id, percent }) => {
       setLibrary(prev => {
         const newLib = { ...prev };
         const g = newLib.all.find(x => x.id === id);
@@ -100,14 +103,16 @@ export function useRomLibrary() {
       });
       setSelectedGame(prev => (prev && prev.id === id) ? { ...prev, downloadProgress: percent } : prev);
     });
+    return () => { unsubscribe && unsubscribe(); };
   }, []);
 
-  const saveAndConnect = useCallback(async () => {
+  const saveAndConnect = useCallback(async (overrideConfig) => {
+    const cfg = overrideConfig || config;
     setLoading(true);
     setError('');
     try {
-      const token = await authenticate(config.url, config.username, config.password);
-      const newConfig = { ...config, token, password: '' };
+      const token = await authenticate(cfg.url, cfg.username, cfg.password);
+      const newConfig = { ...cfg, token };
       await window.electronAPI.saveConfig(newConfig);
       setConfig(newConfig);
       const ok = await loadLibrary(newConfig.url, token, newConfig.emudeckPath);
@@ -118,6 +123,24 @@ export function useRomLibrary() {
       return null;
     }
   }, [config, loadLibrary]);
+
+  const testConnection = useCallback(async ({ url, username, password }) => {
+    try {
+      await authenticate(url, username, password);
+      return true;
+    } catch (e) {
+      throw e;
+    }
+  }, []);
+
+  const completeWizard = useCallback(async (wizardConfig) => {
+    setShowWizard(false);
+    setConfig(prev => ({ ...prev, ...wizardConfig }));
+    await saveAndConnect({ ...config, ...wizardConfig });
+  }, [config, saveAndConnect]);
+
+  const reopenWizard = useCallback(() => setShowWizard(true), []);
+  const closeWizard = useCallback(() => setShowWizard(false), []);
 
   const updateGameStatus = useCallback((game, downloaded) => {
     setLibrary(prev => {
@@ -152,5 +175,6 @@ export function useRomLibrary() {
     config, setConfig, library, loading, error,
     selectedGame, setSelectedGame,
     saveAndConnect, loadLibrary, downloadGame, deleteGame,
+    showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
   };
 }

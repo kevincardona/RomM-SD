@@ -8,6 +8,10 @@
   --text-muted: #8a93a6;
 }
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -104,7 +108,7 @@ select option {
 
 .content-area {
   flex: 1;
-  padding: 20px 40px;
+  padding: 40px 40px 20px;
   overflow-y: auto;
 }
 
@@ -192,14 +196,14 @@ select option {
 
 /* Modal */
 .modal-overlay {
-  position: absolute;
+  position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0,0,0,0.8);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 1000;
 }
 
 .modal {
@@ -269,18 +273,11 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  max-width: 500px;
+  max-width: 560px;
 }
 
-.settings-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
-.settings-form input {
+.settings-form input,
+.settings-form select {
   background: rgba(0,0,0,0.3);
   border: 1px solid var(--panel-border);
   padding: 12px;
@@ -290,9 +287,45 @@ select option {
   transition: all 0.2s;
 }
 
-.settings-form input:focus {
+.settings-form input:focus,
+.settings-form select:focus {
   border-color: var(--accent-color);
   box-shadow: var(--accent-glow);
+}
+
+.editable-setting {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  align-items: center;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+  outline: none;
+  min-width: 0;
+}
+.editable-setting:focus,
+.editable-setting.focused {
+  background: rgba(0, 229, 255, 0.06);
+  border-color: rgba(0, 229, 255, 0.35);
+  box-shadow: var(--accent-glow);
+}
+.editable-setting > span {
+  color: var(--text-main);
+}
+.settings-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.settings-row:focus-within {
+  background: rgba(0, 229, 255, 0.06);
 }
 
 ::-webkit-scrollbar {
@@ -342,16 +375,76 @@ select option {
 
 /* Spinner Animation */
 .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid var(--surface);
-  border-top-color: var(--primary);
+  width: 56px;
+  height: 56px;
+  border: 3px solid rgba(0, 229, 255, 0.15);
+  border-top-color: var(--accent-color);
+  border-right-color: rgba(0, 229, 255, 0.5);
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
   margin: 0 auto;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.25);
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.loading-container {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(0, 229, 255, 0.04), rgba(0, 0, 0, 0.6) 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  flex-direction: column;
+  gap: 18px;
+  animation: fadeIn 0.3s ease-out;
+}
+.loading-text {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+.loading-brand {
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  text-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.progress-bar {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  height: 8px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  position: relative;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-color), rgba(0, 229, 255, 0.7));
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: width 0.35s ease-out;
+  border-radius: 4px;
+}
+.progress-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
 }
 
 .letter-jump-btn:focus,
@@ -380,4 +473,92 @@ select option {
   20%  { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
   70%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 40px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--panel-border);
+}
+.filter-bar-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-right: 4px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.filter-chip:hover {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.3);
+}
+.filter-chip:focus,
+.filter-chip.active {
+  background: rgba(0, 229, 255, 0.18);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  box-shadow: var(--accent-glow);
+}
+.filter-chip.active {
+  font-weight: 600;
+}
+.filter-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--panel-border);
+  margin: 0 4px;
+}
+
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.password-field input {
+  flex: 1;
+  width: 100%;
+  padding-right: 44px;
+  min-width: 0;
+}
+.password-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  outline: none;
+  transition: color 0.2s, background 0.2s;
+}
+.password-toggle:hover,
+.password-toggle:focus {
+  color: var(--accent-color);
+  background: rgba(0, 229, 255, 0.1);
 }

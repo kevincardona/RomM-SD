@@ -21,7 +21,9 @@ function getMainWindow() {
 
 function send(channel, payload) {
   const win = getMainWindow();
-  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  if (win && !win.isDestroyed() && !win.isMinimized() && win.isVisible() && win.isFocused()) {
+    win.webContents.send(channel, payload);
+  }
 }
 
 export function initControllers(sdl, { logInfo, logError }) {

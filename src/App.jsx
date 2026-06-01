@@ -11,9 +11,16 @@ import CollectionsPage from './pages/CollectionsPage';
 import SettingsPage from './pages/SettingsPage';
 import FirmwarePage from './pages/FirmwarePage';
 import SaveSyncPage from './pages/SaveSyncPage';
+import WelcomeWizard from './components/WelcomeWizard';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
-  useSpatialNavigation();
+  const {
+    config, setConfig, library, loading, error,
+    selectedGame, setSelectedGame,
+    saveAndConnect, downloadGame, deleteGame,
+    showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
+  } = useRomLibrary();
 
   const searchRef = useRef(null);
   const letterNavRef = useRef(null);
@@ -24,43 +31,39 @@ export default function App() {
   const onLetterPrev = useCallback(() => letterNavRef.current?.letterOffset(-1), []);
   const onLetterNext = useCallback(() => letterNavRef.current?.letterOffset(1), []);
 
-  const {
-    config, setConfig, library, loading, error,
-    selectedGame, setSelectedGame,
-    saveAndConnect, downloadGame, deleteGame,
-  } = useRomLibrary();
+  useSpatialNavigation(false);
 
-  const [activeTab, setActiveTab] = useState('platforms');
+  const [activeTab, setActiveTab] = useState('library_all');
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedCollection, setSelectedCollection] = useState(null);
+  const [downloadedOnly, setDownloadedOnly] = useState(false);
   const [showCollectionsRoot, setShowCollectionsRoot] = useState(true);
 
   useEffect(() => { if (activeTab === 'collections') setShowCollectionsRoot(true); }, [activeTab]);
 
   useEffect(() => {
-    if (!selectedPlatform && library.platforms) {
-      const first = Object.keys(library.platforms).sort()[0];
-      if (first) setSelectedPlatform(first);
-    }
-    if (!selectedCollection && library.collections) {
+    if (!selectedCollection && library.collections && Object.keys(library.collections).length > 0) {
       const first = Object.keys(library.collections).sort()[0];
       if (first) setSelectedCollection(first);
     }
-  }, [library.platforms, library.collections, selectedPlatform, selectedCollection]);
+  }, [library.collections, selectedCollection]);
 
   const currentGames = useMemo(() => {
-    if (activeTab === 'library_all') return library.all;
-    if (activeTab === 'platforms') return library.platforms[selectedPlatform] || [];
-    if (activeTab === 'collections') return library.collections[selectedCollection] || [];
-    if (activeTab === 'downloaded') return library.all.filter(g => g.downloaded);
-    return [];
-  }, [activeTab, selectedPlatform, selectedCollection, library]);
+    let list;
+    if (activeTab === 'library_all') list = library.all;
+    else if (activeTab === 'platforms') list = library.platforms[selectedPlatform] || [];
+    else if (activeTab === 'collections') list = library.collections[selectedCollection] || [];
+    else if (activeTab === 'downloaded') list = library.all.filter(g => g.downloaded);
+    else list = [];
+    if (downloadedOnly) list = list.filter(g => g.downloaded);
+    return list;
+  }, [activeTab, selectedPlatform, selectedCollection, downloadedOnly, library]);
 
   const libraryTitle = useMemo(() => {
     if (activeTab === 'platforms') return selectedPlatform || 'Library';
     if (activeTab === 'collections') return selectedCollection || 'Collection';
-    if (activeTab === 'downloaded') return 'Ready to Play (Downloaded)';
-    return '';
+    if (activeTab === 'downloaded') return 'Ready to Play';
+    return 'My Library';
   }, [activeTab, selectedPlatform, selectedCollection]);
 
   const onGameSelect = useCallback((game) => setSelectedGame(game), [setSelectedGame]);
@@ -78,28 +81,28 @@ export default function App() {
     if (game) setSelectedGame(game);
   }, [library.all]);
 
-  useController({ onSearchFocus, onLetterPrev, onLetterNext, onContextMenu });
+  useController({ onSearchFocus, onLetterPrev, onLetterNext, onContextMenu }, false);
 
   return (
     <>
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        library={library}
-        selectedPlatform={selectedPlatform}
-        setSelectedPlatform={setSelectedPlatform}
       />
 
       <div className="main-content">
         {loading && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, flexDirection: 'column' }}>
+          <div className="loading-container">
+            <div className="loading-brand">ROMM-SD</div>
             <div className="spinner"></div>
-            <div style={{ marginTop: '20px', color: 'var(--text-muted)' }}>Loading...</div>
+            <div className="loading-text">Loading your library…</div>
           </div>
         )}
 
         {activeTab === 'settings' && (
-          <SettingsPage config={config} setConfig={setConfig} onSave={saveAndConnect} error={error} />
+          <ErrorBoundary key="settings">
+            <SettingsPage config={config} setConfig={setConfig} onSave={saveAndConnect} error={error} onRerunWizard={reopenWizard} />
+          </ErrorBoundary>
         )}
 
         {activeTab === 'collections' && showCollectionsRoot && (
@@ -112,7 +115,7 @@ export default function App() {
         )}
 
         {activeTab === 'firmware' && <FirmwarePage config={config} />}
-        {activeTab === 'savesync' && <SaveSyncPage />}
+        {activeTab === 'savesync' && <SaveSyncPage library={library} config={config} />}
 
         {((activeTab === 'platforms' || activeTab === 'downloaded' || activeTab === 'library_all') || (activeTab === 'collections' && !showCollectionsRoot)) && (
           <LibraryPage
@@ -122,6 +125,22 @@ export default function App() {
             onGameSelect={onGameSelect}
             config={config}
             onRegisterLetterNav={(nav) => { letterNavRef.current = nav; }}
+            library={library}
+            selectedPlatform={selectedPlatform}
+            onPlatformChange={(p) => {
+              setSelectedPlatform(p);
+              if (p) setActiveTab('platforms');
+            }}
+            downloadedOnly={downloadedOnly}
+            onDownloadedChange={setDownloadedOnly}
+            showDownloadedToggle
+            collections={Object.keys(library.collections).sort()}
+            selectedCollection={activeTab === 'collections' ? selectedCollection : null}
+            onCollectionChange={(c) => {
+              if (c) { setSelectedCollection(c); setShowCollectionsRoot(false); }
+              else { setShowCollectionsRoot(true); setActiveTab('collections'); }
+            }}
+            onBackToCollectionsRoot={activeTab === 'collections' ? () => setShowCollectionsRoot(true) : null}
           />
         )}
       </div>
@@ -133,6 +152,15 @@ export default function App() {
           onClose={onCloseModal}
           onDownload={downloadGame}
           onDelete={deleteGame}
+        />
+      )}
+
+      {showWizard && (
+        <WelcomeWizard
+          initialConfig={config}
+          onTestConnection={testConnection}
+          onComplete={completeWizard}
+          onClose={closeWizard}
         />
       )}
     </>

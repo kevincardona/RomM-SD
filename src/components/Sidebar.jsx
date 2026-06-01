@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Focusable from './Focusable';
 
 const PRIMARY_TABS = [
@@ -10,10 +10,7 @@ const PRIMARY_TABS = [
   { id: 'settings',    label: 'Settings' },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab, library, selectedPlatform, setSelectedPlatform }) {
-  const [showPlatforms, setShowPlatforms] = useState(true);
-  const platforms = Object.keys(library.platforms).sort();
-
+export default function Sidebar({ activeTab, setActiveTab }) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">ROMM-SD</div>
@@ -27,26 +24,6 @@ export default function Sidebar({ activeTab, setActiveTab, library, selectedPlat
           {t.label}
         </Focusable>
       ))}
-
-      <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-        <Focusable
-          className="nav-item"
-          style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '5px', display: 'flex', justifyContent: 'space-between', padding: '5px 20px', background: 'transparent' }}
-          onActivate={() => setShowPlatforms(v => !v)}
-        >
-          PLATFORMS <span>{showPlatforms ? '▼' : '▶'}</span>
-        </Focusable>
-        {showPlatforms && platforms.map(p => (
-          <Focusable
-            key={p}
-            className={`nav-item ${selectedPlatform === p && activeTab === 'platforms' ? 'active' : ''}`}
-            onActivate={() => { setActiveTab('platforms'); setSelectedPlatform(p); }}
-            style={{ fontSize: '0.9rem', padding: '10px 20px', paddingLeft: '30px' }}
-          >
-            {p}
-          </Focusable>
-        ))}
-      </div>
     </div>
   );
 }

@@ -6,14 +6,22 @@ export default function Modal({ onClose, children, maxWidth, width }) {
 
   useEffect(() => {
     previousFocus.current = document.activeElement;
-    const first = ref.current?.querySelector('button, [tabindex]:not([tabindex="-1"])');
-    if (first) first.focus();
     return () => {
       if (previousFocus.current && document.body.contains(previousFocus.current)) {
         previousFocus.current.focus();
       }
     };
   }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const el = ref.current;
+      if (!el) return;
+      const focusable = el.querySelector('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]):not([tabindex="-1"])');
+      if (focusable) focusable.focus();
+    }, 0);
+    return () => clearTimeout(id);
+  });
 
   const refocusFirst = () => {
     const first = ref.current?.querySelector('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])');
