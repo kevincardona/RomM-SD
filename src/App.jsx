@@ -13,10 +13,11 @@ import FirmwarePage from './pages/FirmwarePage';
 import SaveSyncPage from './pages/SaveSyncPage';
 import WelcomeWizard from './components/WelcomeWizard';
 import ErrorBoundary from './components/ErrorBoundary';
+import { isBrowserPlaySupported } from './browserPlaySupport';
 
 export default function App() {
   const {
-    config, setConfig, library, loading, error,
+    config, setConfig, updateConfig, library, loading, error,
     selectedGame, setSelectedGame,
     saveAndConnect, downloadGame, deleteGame,
     showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
@@ -37,6 +38,7 @@ export default function App() {
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [downloadedOnly, setDownloadedOnly] = useState(false);
+  const [playInBrowserOnly, setPlayInBrowserOnly] = useState(false);
   const [showCollectionsRoot, setShowCollectionsRoot] = useState(true);
 
   useEffect(() => { if (activeTab === 'collections') setShowCollectionsRoot(true); }, [activeTab]);
@@ -53,11 +55,12 @@ export default function App() {
     if (activeTab === 'library_all') list = library.all;
     else if (activeTab === 'platforms') list = library.platforms[selectedPlatform] || [];
     else if (activeTab === 'collections') list = library.collections[selectedCollection] || [];
-    else if (activeTab === 'downloaded') list = library.all.filter(g => g.downloaded);
+    else if (activeTab === 'downloaded') list = library.all.filter(g => g.downloaded || isBrowserPlaySupported(g.emuFolder));
     else list = [];
     if (downloadedOnly) list = list.filter(g => g.downloaded);
+    if (playInBrowserOnly) list = list.filter(g => isBrowserPlaySupported(g.emuFolder));
     return list;
-  }, [activeTab, selectedPlatform, selectedCollection, downloadedOnly, library]);
+  }, [activeTab, selectedPlatform, selectedCollection, downloadedOnly, playInBrowserOnly, library]);
 
   const libraryTitle = useMemo(() => {
     if (activeTab === 'platforms') return selectedPlatform || 'Library';
@@ -88,6 +91,7 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        config={config}
       />
 
       <div className="main-content">
@@ -101,7 +105,7 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <ErrorBoundary key="settings">
-            <SettingsPage config={config} setConfig={setConfig} onSave={saveAndConnect} error={error} onRerunWizard={reopenWizard} />
+            <SettingsPage config={config} setConfig={setConfig} updateConfig={updateConfig} onSave={saveAndConnect} error={error} onRerunWizard={reopenWizard} />
           </ErrorBoundary>
         )}
 
@@ -115,7 +119,7 @@ export default function App() {
         )}
 
         {activeTab === 'firmware' && <FirmwarePage config={config} />}
-        {activeTab === 'savesync' && <SaveSyncPage library={library} config={config} />}
+        {activeTab === 'savesync' && <SaveSyncPage library={library} config={config} enabled={!!config.saveSyncEnabled} />}
 
         {((activeTab === 'platforms' || activeTab === 'downloaded' || activeTab === 'library_all') || (activeTab === 'collections' && !showCollectionsRoot)) && (
           <LibraryPage
@@ -134,6 +138,9 @@ export default function App() {
             downloadedOnly={downloadedOnly}
             onDownloadedChange={setDownloadedOnly}
             showDownloadedToggle
+            playInBrowserOnly={playInBrowserOnly}
+            onPlayInBrowserChange={setPlayInBrowserOnly}
+            showPlayInBrowserToggle
             collections={Object.keys(library.collections).sort()}
             selectedCollection={activeTab === 'collections' ? selectedCollection : null}
             onCollectionChange={(c) => {

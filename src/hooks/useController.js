@@ -1,10 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
 
-const REPEAT_DELAY = 420;
-const REPEAT_INTERVAL = 160;
-const DEBOUNCE_MS = 200;
-const STICK_ENGAGE = 0.65;
-const STICK_RELEASE = 0.25;
+const REPEAT_DELAY = 360;
+const REPEAT_INTERVAL = 130;
+const DEBOUNCE_MS = 55;  // short enough to register quick taps, long enough to dedupe
+const STICK_ENGAGE = 0.55;
+const STICK_RELEASE = 0.30;
 
 const NAV_MAP = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 
@@ -153,21 +153,33 @@ export function useController({
     }
     const prev = axisState.current[axis];
     if (direction === null) {
-      if (prev && Math.abs(prev.lastValue) > STICK_RELEASE) {
-        axisState.current[axis] = { direction: null, lastValue: 0 };
+      // Released — mark `wasReleased: true` so the next engage re-fires
+      // even if the direction is the same as the last fired one.
+      if (prev && prev.direction !== null) {
+        axisState.current[axis] = { direction: null, lastValue: value, wasReleased: true };
       } else if (prev) {
-        axisState.current[axis] = { ...prev, lastValue: prev.lastValue };
+        axisState.current[axis] = { ...prev, lastValue: value };
       } else {
-        axisState.current[axis] = { direction: null, lastValue: 0 };
+        axisState.current[axis] = { direction: null, lastValue: value };
       }
       return;
     }
-    const lastValue = prev?.lastValue ?? 0;
-    if (prev?.direction !== direction && Math.abs(lastValue) < STICK_RELEASE) {
+    // Engaged. We fire when:
+    //   (a) direction changed from the last fired direction (so opposite flips fire), OR
+    //   (b) we just released and re-engaged (stick is at a fresh engage position),
+    //       which we track via `wasReleased: true`.
+    const lastFired = prev?.lastFiredDirection;
+    const wasReleased = prev?.wasReleased === true;
+    const isNewDirection = lastFired !== direction;
+    if (isNewDirection || wasReleased) {
+      if (!canFire(`axis-${axis}`)) {
+        axisState.current[axis] = { direction, lastValue: value, lastFiredDirection: lastFired, wasReleased };
+        return;
+      }
       fireNavKey(direction);
-      axisState.current[axis] = { direction, lastValue: value, nextFire: Date.now() + REPEAT_INTERVAL };
+      axisState.current[axis] = { direction, lastValue: value, lastFiredDirection: direction, wasReleased: false, nextFire: Date.now() + REPEAT_INTERVAL };
     } else {
-      axisState.current[axis] = { direction, lastValue: value, nextFire: prev?.nextFire };
+      axisState.current[axis] = { direction, lastValue: value, lastFiredDirection: direction, wasReleased: false, nextFire: prev?.nextFire };
     }
   }, [disabled]);
 

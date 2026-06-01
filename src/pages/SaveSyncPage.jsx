@@ -143,7 +143,7 @@ function GameSaveCard({ game, onPush, onPull, onDelete, busy, expanded, onToggle
   );
 }
 
-export default function SaveSyncPage({ library, config }) {
+export default function SaveSyncPage({ library, config, enabled }) {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyIds, setBusyIds] = useState(new Set());
@@ -169,8 +169,44 @@ export default function SaveSyncPage({ library, config }) {
     setLoading(false);
   }, [library, config]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (enabled) load(); else setLoading(false); }, [load, enabled]);
   useEffect(() => { firstBtnRef.current?.focus(); }, []);
+
+  if (enabled === false) {
+    return (
+      <>
+        <div className="topbar">
+          <h2 style={{ margin: 0 }}>Cloud Saves</h2>
+        </div>
+        <div className="content-area">
+          <div style={{
+            maxWidth: '560px',
+            background: 'rgba(255, 152, 0, 0.06)',
+            border: '1px solid rgba(255, 152, 0, 0.25)',
+            borderRadius: '10px',
+            padding: '20px 24px',
+            marginBottom: '20px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <span style={{
+                fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '1px',
+                background: 'rgba(255, 152, 0, 0.18)', color: '#ff9800',
+                padding: '2px 8px', borderRadius: '4px', fontWeight: 700,
+              }}>EXPERIMENTAL · DISABLED</span>
+            </div>
+            <h3 style={{ marginTop: 0, marginBottom: '8px' }}>Save Sync is turned off</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: 0 }}>
+              ROMM-SD can track every game's save files locally and detect conflicts before
+              overwriting. To use it, enable <strong style={{ color: 'var(--text-main)' }}>Save Sync</strong> under
+              {' '}<strong style={{ color: 'var(--text-main)' }}>Settings → Experimental</strong>.
+              Once enabled, this tab will list every game with a save file and let you push, pull,
+              and version them.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const setBusy = (id, busy) => {
     setBusyIds(prev => {

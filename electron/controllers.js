@@ -19,10 +19,17 @@ function getMainWindow() {
   return BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-function send(channel, payload) {
-  const win = getMainWindow();
-  if (win && !win.isDestroyed() && !win.isMinimized() && win.isVisible() && win.isFocused()) {
-    win.webContents.send(channel, payload);
+// Send to all live windows. This way the controller still drives the main
+// RomM-SD window even when a child window (e.g. the browser-play stream) is
+// focused. The main window was previously gated on `win.isFocused()`, which
+// caused the controller to silently stop working the moment a child window
+// stole focus — extremely confusing on a TV/Steam Deck where there is no
+// visible "active" highlight.
+function broadcast(channel, payload) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send(channel, payload); } catch {}
+    }
   }
 }
 
@@ -42,11 +49,11 @@ export function initControllers(sdl, { logInfo, logError }) {
 
       j.on('buttonDown', ({ button }) => {
         const name = JOYSTICK_BUTTON_MAP[button];
-        if (name) send('controller-button', { button: name, state: 'down' });
+        if (name) broadcast('controller-button', { button: name, state: 'down' });
       });
       j.on('buttonUp', ({ button }) => {
         const name = JOYSTICK_BUTTON_MAP[button];
-        if (name) send('controller-button', { button: name, state: 'up' });
+        if (name) broadcast('controller-button', { button: name, state: 'up' });
       });
       j.on('axisMotion', ({ axis, value }) => {
         const name = AXIS_MAP[axis];
@@ -58,10 +65,10 @@ export function initControllers(sdl, { logInfo, logError }) {
           const pressed = normalized > TRIGGER_THRESHOLD;
           if (state[side] !== pressed) {
             state[side] = pressed;
-            send('controller-button', { button: name, state: pressed ? 'down' : 'up' });
+            broadcast('controller-button', { button: name, state: pressed ? 'down' : 'up' });
           }
         } else {
-          send('controller-axis', { axis: name, value });
+          broadcast('controller-axis', { axis: name, value });
         }
       });
 

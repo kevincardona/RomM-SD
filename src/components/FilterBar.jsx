@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Focusable from './Focusable';
+import { isBrowserPlaySupported } from '../browserPlaySupport';
 
 function FilterChip({ label, active, onActivate, badge, style }) {
   return (
@@ -138,6 +139,9 @@ export default function FilterBar({
   downloadedOnly,
   onDownloadedChange,
   showDownloaded,
+  playInBrowserOnly,
+  onPlayInBrowserChange,
+  showPlayInBrowser,
   collections,
   selectedCollection,
   onCollectionChange,
@@ -148,6 +152,7 @@ export default function FilterBar({
   const collectionItems = [{ value: null, label: 'All Collections' }, ...((collections || []).map(c => ({ value: c, label: c })))];
   const totalCount = games.length;
   const downloadedCount = games.filter(g => g.downloaded).length;
+  const playInBrowserCount = games.filter(g => isBrowserPlaySupported(g.emuFolder)).length;
 
   return (
     <div className="filter-bar">
@@ -184,6 +189,15 @@ export default function FilterBar({
           active={downloadedOnly}
           badge={downloadedCount}
           onActivate={() => onDownloadedChange(!downloadedOnly)}
+        />
+      )}
+
+      {showPlayInBrowser && onPlayInBrowserChange && (
+        <FilterChip
+          label={playInBrowserOnly ? 'Play in Browser ✓' : 'Play in Browser'}
+          active={playInBrowserOnly}
+          badge={playInBrowserCount}
+          onActivate={() => onPlayInBrowserChange(!playInBrowserOnly)}
         />
       )}
 

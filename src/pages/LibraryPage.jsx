@@ -16,6 +16,7 @@ function groupByLetter(games) {
 export default function LibraryPage({
   title, games, token, onGameSelect, config, onRegisterLetterNav,
   library, selectedPlatform, onPlatformChange, downloadedOnly, onDownloadedChange, showDownloadedToggle,
+  playInBrowserOnly, onPlayInBrowserChange, showPlayInBrowserToggle,
   collections, selectedCollection, onCollectionChange, onBackToCollectionsRoot,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -152,6 +153,9 @@ export default function LibraryPage({
           downloadedOnly={downloadedOnly}
           onDownloadedChange={onDownloadedChange}
           showDownloaded={showDownloadedToggle}
+          playInBrowserOnly={playInBrowserOnly}
+          onPlayInBrowserChange={onPlayInBrowserChange}
+          showPlayInBrowser={showPlayInBrowserToggle}
           collections={collections}
           selectedCollection={selectedCollection}
           onCollectionChange={onCollectionChange}

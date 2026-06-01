@@ -1,5 +1,22 @@
 import { useEffect } from 'react';
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([tabindex="-1"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+function isVisible(el) {
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return false;
+  const style = window.getComputedStyle(el);
+  if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity || '1') === 0) return false;
+  return true;
+}
+
 export function useSpatialNavigation(disabled = false) {
   useEffect(() => {
     if (disabled) return;
@@ -10,7 +27,8 @@ export function useSpatialNavigation(disabled = false) {
       const current = document.activeElement;
       const currentModal = current?.closest('.modal-overlay') || null;
 
-      const focusable = Array.from(document.querySelectorAll('[tabIndex]:not([tabIndex="-1"]):not([disabled])'))
+      const focusable = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR))
+        .filter(el => isVisible(el))
         .filter(el => {
           if (currentModal) {
             return el.closest('.modal-overlay') === currentModal;

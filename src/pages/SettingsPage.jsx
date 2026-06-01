@@ -106,7 +106,7 @@ function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit
   );
 }
 
-export default function SettingsPage({ config, setConfig, onSave, error, onRerunWizard }) {
+export default function SettingsPage({ config, setConfig, updateConfig, onSave, error, onRerunWizard }) {
   const [logs, setLogs] = useState('');
   const [showLogs, setShowLogs] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
@@ -190,7 +190,7 @@ export default function SettingsPage({ config, setConfig, onSave, error, onRerun
           <select
             tabIndex={0}
             value={config.gridSize || 'medium'}
-            onChange={e => setConfig({...config, gridSize: e.target.value})}
+            onChange={e => updateConfig({gridSize: e.target.value})}
             style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.05)', color: 'white' }}
           >
             <option value="small">Small</option>
@@ -202,8 +202,10 @@ export default function SettingsPage({ config, setConfig, onSave, error, onRerun
         <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer', minWidth: 0 }}>
           <input
             type="checkbox"
+            tabIndex={0}
             checked={config.showGameTitles !== false}
-            onChange={e => setConfig({...config, showGameTitles: e.target.checked})}
+            onChange={e => updateConfig({showGameTitles: e.target.checked})}
+            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
             style={{ width: '18px', height: '18px', margin: 0, flex: '0 0 auto' }}
           />
           <div style={{ minWidth: 0 }}>
@@ -254,6 +256,83 @@ export default function SettingsPage({ config, setConfig, onSave, error, onRerun
           <button className="btn" tabIndex={0} onClick={onRerunWizard}>
             Re-run Setup Wizard
           </button>
+        </div>
+
+        <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--panel-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+            <span style={{ fontWeight: 600 }}>Experimental</span>
+            <span style={{
+              fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '1px',
+              background: 'rgba(255, 152, 0, 0.18)', color: '#ff9800',
+              padding: '2px 8px', borderRadius: '4px', fontWeight: 700,
+            }}>EXPERIMENTAL</span>
+          </div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
+            These features are off by default. Enable at your own risk — they may not work in all setups.
+          </div>
+
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer', minWidth: 0 }}>
+            <input
+              type="checkbox"
+              tabIndex={0}
+              checked={!!config.saveSyncEnabled}
+              onChange={e => updateConfig({saveSyncEnabled: e.target.checked})}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
+              style={{ width: '18px', height: '18px', margin: 0, flex: '0 0 auto' }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 'bold' }}>Save Sync</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Track and version every game's save files locally
+                (<code style={{ color: 'var(--accent-color)' }}>~/.config/emudeck-romm-connector/saves/</code>).
+                Detects conflicts before overwriting and auto-pushes when the emulator writes.
+                Adds a "Cloud Saves" tab with push/pull controls.
+              </div>
+            </div>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '14px', cursor: 'pointer', minWidth: 0 }}>
+            <input
+              type="checkbox"
+              tabIndex={0}
+              checked={!!config.browserPlayEnabled}
+              onChange={e => updateConfig({browserPlayEnabled: e.target.checked})}
+              onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
+              style={{ width: '18px', height: '18px', margin: 0, flex: '0 0 auto' }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 'bold' }}>Browser Play (no download)</div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Adds a "Play in Browser" option to game cards. When clicked, ROMM-SD
+                <strong style={{ color: 'var(--text-main)' }}> auto-logs you into RomM</strong> using
+                the credentials from this app and opens a streaming window powered by
+                RomM's emulatorjs. No download, no disk usage — your gamepad still drives
+                the in-stream emulator. Limited to cores emulatorjs supports (NES, SNES,
+                GB/GBA, Genesis, PSX, NDS, etc — not GameCube, Wii, Switch, PS2/PSP).
+              </div>
+            </div>
+          </label>
+
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '6px' }}>
+              <span style={{ fontWeight: 500 }}>BIOS Install Layout</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>EmuDeck convention</span>
+            </div>
+            <select
+              tabIndex={0}
+              value={config.biosLayout || 'emudeck'}
+              onChange={e => updateConfig({biosLayout: e.target.value})}
+              style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--panel-border)', background: 'rgba(255,255,255,0.05)', color: 'white' }}
+            >
+              <option value="emudeck">EmuDeck — per-platform subfolder (recommended)</option>
+              <option value="flat">Flat — all files in BIOS root (RetroArch default)</option>
+            </select>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              "Per-platform subfolder" puts each file in <code>Emulation/bios/&lt;platform&gt;/</code> so
+              Dolphin, PCSX2, DuckStation, etc. find them. Switch keys are always written to Yuzu &
+              Ryujinx's config dirs regardless of this setting.
+            </div>
+          </div>
         </div>
 
         {diagnostics && (

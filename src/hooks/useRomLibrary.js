@@ -6,6 +6,7 @@ const DEFAULT_CONFIG = {
   token: '', emudeckPath: '~/Emulation/roms',
   gridSize: 'medium', showGameTitles: true,
   saveSyncEnabled: false, browserPlayEnabled: false,
+  biosLayout: 'emudeck', // 'emudeck' (per-platform subfolder) | 'flat' | 'auto'
 };
 
 function isValidRom(g) {
@@ -142,6 +143,13 @@ export function useRomLibrary() {
   const reopenWizard = useCallback(() => setShowWizard(true), []);
   const closeWizard = useCallback(() => setShowWizard(false), []);
 
+  const updateConfig = useCallback(async (patch) => {
+    const next = { ...config, ...patch };
+    setConfig(next);
+    try { await window.electronAPI.saveConfig(next); }
+    catch (e) { setError(`Save failed: ${e.message}`); }
+  }, [config]);
+
   const updateGameStatus = useCallback((game, downloaded) => {
     setLibrary(prev => {
       const newLib = { ...prev };
@@ -172,7 +180,7 @@ export function useRomLibrary() {
   }, [updateGameStatus]);
 
   return {
-    config, setConfig, library, loading, error,
+    config, setConfig, updateConfig, library, loading, error,
     selectedGame, setSelectedGame,
     saveAndConnect, loadLibrary, downloadGame, deleteGame,
     showWizard, completeWizard, reopenWizard, closeWizard, testConnection,

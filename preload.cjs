@@ -30,6 +30,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   snapshotGame: (data) => ipcRenderer.invoke('snapshot-game', data),
   startSaveWatcher: (data) => ipcRenderer.invoke('start-save-watcher', data),
   stopSaveWatcher: (data) => ipcRenderer.invoke('stop-save-watcher', data),
+  resolveBiosPaths: (data) => ipcRenderer.invoke('resolve-bios-paths', data),
+  getBiosBasePath: (data) => ipcRenderer.invoke('get-bios-base-path', data),
+  openBrowserPlay: (data) => ipcRenderer.invoke('open-browser-play', data),
+  closeBrowserPlay: () => ipcRenderer.invoke('close-browser-play'),
   controllerRumble: (opts) => ipcRenderer.invoke('controller-rumble', opts),
   showKeyboard: () => ipcRenderer.invoke('show-keyboard'),
   onControllerButton: (cb) => {

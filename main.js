@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -9,11 +9,10 @@ const execAsync = util.promisify(exec);
 const require = createRequire(import.meta.url);
 
 import { initControllers } from './electron/controllers.js';
-import { launchGame, runCloudSync } from './electron/launchers.js';
+import { launchGame, runCloudSync, getEmulatorCommands, resolveInstallPaths, biosBasePath } from './electron/launchers.js';
 import { addToSteam, addSelfToSteam } from './electron/steamShortcuts.js';
 import { downloadRom } from './electron/downloads.js';
 import { makeLogger, readConfig, writeConfig, getLogPath, getConfigPath } from './electron/config.js';
-import { getEmulatorCommands } from './electron/launchers.js';
 import {
   listGameSaves,
   getSaveStatus,
@@ -149,6 +148,100 @@ ipcMain.handle('add-to-steam', (_e, payload) => addToSteam(payload, { ...logger,
 ipcMain.handle('add-self-to-steam', () => addSelfToSteam(logger));
 
 ipcMain.handle('controller-rumble', (_e, opts) => { controllers?.rumble(opts); });
+
+ipcMain.handle('resolve-bios-paths', (_e, payload) => {
+  try {
+    return { success: true, paths: resolveInstallPaths(payload || {}) };
+  } catch (e) { return { success: false, error: e.message }; }
+});
+ipcMain.handle('get-bios-base-path', (_e, payload) => {
+  try { return { success: true, path: biosBasePath(payload?.emudeckPath) }; }
+  catch (e) { return { success: false, error: e.message }; }
+});
+
+const BROWSER_PLAY_PARTITION = 'persist:romm-play';
+let browserPlayWindow = null;
+
+async function rommSessionLogin(baseUrl, token) {
+  // RomM's /api/login is POST-only; the CSRF middleware short-circuits when
+  // an Authorization: Basic ... header is present, so no CSRF cookie/header
+  // dance is needed. The response carries a romm_session cookie set by
+  // RedisSessionMiddleware — we just lift it into the Electron session.
+  const res = await fetch(`${baseUrl}/api/login`, {
+    method: 'POST',
+    headers: { 'Authorization': token },
+  });
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('RomM rejected the saved credentials — re-check your username/password in Settings');
+  }
+  if (!res.ok) throw new Error(`RomM login returned ${res.status}`);
+  const setCookie = res.headers.get('set-cookie') || '';
+  const sessionMatch = setCookie.match(/(?:^|, |; )romm_session=([^;,]+)/);
+  if (!sessionMatch) throw new Error('RomM did not issue a session cookie (check that auth is enabled on the server)');
+  return { sessionId: sessionMatch[1].trim() };
+}
+
+ipcMain.handle('open-browser-play', async (_e, payload) => {
+  const { serverUrl, romId, romName, token } = payload || {};
+  if (!serverUrl || !romId) return { success: false, error: 'serverUrl and romId required' };
+
+  let baseUrl;
+  try {
+    baseUrl = new URL(serverUrl).origin;
+  } catch (e) {
+    return { success: false, error: `Invalid server URL: ${e.message}` };
+  }
+  const playUrl = `${baseUrl}/console/rom/${encodeURIComponent(romId)}/play`;
+
+  if (browserPlayWindow && !browserPlayWindow.isDestroyed()) {
+    try { browserPlayWindow.close(); } catch { /* already destroyed */ }
+  }
+
+  try {
+    const auth = await rommSessionLogin(baseUrl, token);
+    const { hostname } = new URL(baseUrl);
+    const ses = session.fromPartition(BROWSER_PLAY_PARTITION);
+    // SameSite is intentionally unset: the window starts at about:blank, and
+    // samesite=strict cookies would be dropped on the first cross-site nav.
+    // The server's own response to the page load will set a CSRF cookie;
+    // we only need to seed the session cookie here.
+    await ses.cookies.set({ url: baseUrl, name: 'romm_session', value: auth.sessionId, domain: hostname, path: '/', httpOnly: true });
+
+    browserPlayWindow = new BrowserWindow({
+      width: 1280,
+      height: 800,
+      title: romName ? `▶ ${romName}` : 'RomM Play',
+      autoHideMenuBar: true,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        partition: BROWSER_PLAY_PARTITION,
+      },
+    });
+    browserPlayWindow.on('closed', () => { browserPlayWindow = null; });
+
+    await browserPlayWindow.loadURL(playUrl);
+    logger.info(`Browser play: opened ${playUrl} for ${romName || `rom ${romId}`}`);
+    return { success: true };
+  } catch (e) {
+    logger.error(`Browser play: ${e.message}`);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('close-browser-play', () => {
+  if (browserPlayWindow && !browserPlayWindow.isDestroyed()) {
+    try { browserPlayWindow.close(); } catch { /* already destroyed */ }
+  }
+  browserPlayWindow = null;
+  return { success: true };
+});
+
+app.on('before-quit', () => {
+  if (browserPlayWindow && !browserPlayWindow.isDestroyed()) {
+    try { browserPlayWindow.close(); } catch { /* already destroyed */ }
+  }
+});
 
 ipcMain.handle('show-keyboard', async () => {
   try { await execAsync('xdg-open steam://open/keyboard'); } catch (_) {}

@@ -9,6 +9,10 @@ const execAsync = util.promisify(exec);
 const HOME = os.homedir();
 const LAUNCHERS_DIR = path.join(HOME, 'Emulation', 'tools', 'launchers');
 
+import { resolveInstallPaths, biosBasePath } from './biosPaths.js';
+
+export { resolveInstallPaths, biosBasePath };
+
 export function getEmulatorCommands(emuFolder, localPath) {
   const L = LAUNCHERS_DIR;
   const commands = [];
