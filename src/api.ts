@@ -1,4 +1,6 @@
-export async function authenticate(url, username, password) {
+import type { Game, Library } from './vite-env'
+
+export async function authenticate(url: string, username: string, password: string): Promise<string> {
   const baseUrl = url.replace(/\/$/, '');
   const token = 'Basic ' + btoa(`${username}:${password}`);
 
@@ -7,17 +9,17 @@ export async function authenticate(url, username, password) {
       'Authorization': token
     }
   });
-  
+
   if (!response.ok) {
     let errText = response.statusText;
-    try { const t = await response.text(); if (t) errText = t; } catch(e){}
+    try { const t = await response.text(); if (t) errText = t; } catch(e) {}
     throw new Error(`Auth failed (${response.status}): ${errText}`);
   }
-  
-  return token; // Return the full 'Basic ...' string
+
+  return token;
 }
 
-const platformFolderMap = {
+const platformFolderMap: Record<string, string> = {
   'nintendo 64': 'n64',
   'n64': 'n64',
   'nintendo ds': 'nds',
@@ -84,36 +86,36 @@ const platformFolderMap = {
   'virtual boy': 'virtualboy',
 };
 
-export async function fetchLibrary(url, token) {
+export async function fetchLibrary(url: string, token: string): Promise<Library> {
   const baseUrl = url.replace(/\/$/, '');
-  
+
   const response = await fetch(`${baseUrl}/api/roms?limit=10000`, {
     headers: {
-      'Authorization': token // Token already includes 'Basic' or 'Bearer'
+      'Authorization': token
     }
   });
-  
+
   if (!response.ok) {
     let errText = response.statusText;
-    try { const t = await response.text(); if (t) errText = t; } catch(e){}
+    try { const t = await response.text(); if (t) errText = t; } catch(e) {}
     throw new Error(`Fetch failed (${response.status}): ${errText}`);
   }
-  
+
   const data = await response.json();
-  const roms = Array.isArray(data) ? data : (data.items || data.roms || []);
-  
-  const library = { platforms: {}, collections: {}, all: [] };
-  
+  const roms: any[] = Array.isArray(data) ? data : (data.items || data.roms || []);
+
+  const library: Library = { platforms: {}, collections: {}, all: [] };
+
   roms.forEach(rom => {
-    const platform = rom.platform_display_name || rom.system?.name || rom.platform || 'Unknown';
+    const platform: string = rom.platform_display_name || rom.system?.name || rom.platform || 'Unknown';
     if (!library.platforms[platform]) library.platforms[platform] = [];
-    
+
     const coverUrlRaw = rom.path_cover_large || rom.path_cover_small || rom.url_cover;
     const coverUrl = coverUrlRaw ? `${baseUrl}${coverUrlRaw}` : null;
-    
+
     const emuFolder = platformFolderMap[platform.toLowerCase()] || platform.toLowerCase();
-    
-    const game = {
+
+    const game: Game = {
       id: rom.id || rom.hash || rom.name,
       title: rom.name || rom.title,
       platform: platform,
@@ -122,28 +124,42 @@ export async function fetchLibrary(url, token) {
       downloadUrl: `${baseUrl}/api/roms/${rom.id}/content/${encodeURIComponent(rom.fs_name || rom.filename || `${rom.name || 'game'}.rom`)}`,
       filename: rom.fs_name || rom.filename || `${rom.name || 'game'}.rom`
     };
-    
+
     library.platforms[platform].push(game);
     library.all.push(game);
-    
-    const collections = rom.metadatum?.collections || rom.collections || [];
+
+    const collections: string[] = rom.metadatum?.collections || rom.collections || [];
     collections.forEach(c => {
       if (!library.collections[c]) library.collections[c] = [];
       library.collections[c].push(game);
     });
   });
-  
+
   return library;
 }
 
-export async function fetchFirmware(url, token) {
-  const baseUrl = url.replace(/\/$/, '');
-  const result = [];
+export interface FirmwareEntry {
+  id?: number | string;
+  name?: string;
+  file?: string;
+  md5?: string;
+  platform_id?: number | string;
+  platform_slug?: string;
+  platform_fs_slug?: string;
+  platform_display_name?: string;
+  platform?: {
+    id?: number | string;
+    slug?: string;
+    fs_slug?: string;
+    display_name?: string;
+    name?: string;
+  };
+}
 
-  // Per the RomM OpenAPI spec, /api/firmware only accepts a platform_id query
-  // parameter and returns firmware for a single platform. Platforms themselves
-  // include their `firmware` array, so we paginate platforms and collect all
-  // firmware while preserving the platform association (slug, fs_slug, id).
+export async function fetchFirmware(url: string, token: string): Promise<FirmwareEntry[]> {
+  const baseUrl = url.replace(/\/$/, '');
+  const result: FirmwareEntry[] = [];
+
   let offset = 0;
   const limit = 200;
   try {
@@ -153,11 +169,11 @@ export async function fetchFirmware(url, token) {
       });
       if (!response.ok) break;
       const data = await response.json();
-      const list = Array.isArray(data) ? data : (data.items || []);
+      const list: any[] = Array.isArray(data) ? data : (data.items || []);
       if (list.length === 0) break;
 
       for (const p of list) {
-        const firmwares = Array.isArray(p.firmware) ? p.firmware : [];
+        const firmwares: any[] = Array.isArray(p.firmware) ? p.firmware : [];
         for (const fw of firmwares) {
           result.push({
             ...fw,
@@ -180,17 +196,32 @@ export async function fetchFirmware(url, token) {
       offset += limit;
       if (offset > 5000) break;
     }
-  } catch (e) {
+  } catch (e: any) {
     console.warn('fetchFirmware via platforms failed:', e.message);
   }
   return result;
 }
 
-export async function fetchPlatforms(url, token) {
+export interface PlatformEntry {
+  display: string;
+  slug: string | null;
+  fsSlug: string | null;
+  name?: string;
+  iconUrl: string | null;
+  raw: any;
+}
+
+export interface PlatformIndex {
+  byId: Record<string, PlatformEntry>;
+  bySlug: Record<string, PlatformEntry>;
+  byFsSlug: Record<string, PlatformEntry>;
+}
+
+export async function fetchPlatforms(url: string, token: string): Promise<PlatformIndex> {
   const baseUrl = url.replace(/\/$/, '');
-  const byId = {};
-  const bySlug = {};
-  const byFsSlug = {};
+  const byId: Record<string, PlatformEntry> = {};
+  const bySlug: Record<string, PlatformEntry> = {};
+  const byFsSlug: Record<string, PlatformEntry> = {};
   try {
     let offset = 0;
     const limit = 200;
@@ -200,7 +231,7 @@ export async function fetchPlatforms(url, token) {
       });
       if (!response.ok) break;
       const data = await response.json();
-      const list = Array.isArray(data) ? data : (data.items || []);
+      const list: any[] = Array.isArray(data) ? data : (data.items || []);
       if (list.length === 0) break;
 
       for (const p of list) {
@@ -208,8 +239,10 @@ export async function fetchPlatforms(url, token) {
         const slug = p.slug || (typeof p.id === 'string' ? p.id : null);
         const fsSlug = p.fs_slug || slug;
         const iconRel = p.path_icon || p.url_icon || p.icon || null;
-        const iconUrl = iconRel ? (iconRel.startsWith('http') ? iconRel : `${baseUrl}${iconRel.startsWith('/') ? '' : '/'}${iconRel}`) : null;
-        const entry = { display, slug, fsSlug, name: p.name, iconUrl, raw: p };
+        const iconUrl = iconRel
+          ? (iconRel.startsWith('http') ? iconRel : `${baseUrl}${iconRel.startsWith('/') ? '' : '/'}${iconRel}`)
+          : null;
+        const entry: PlatformEntry = { display, slug, fsSlug, name: p.name, iconUrl, raw: p };
         if (p.id != null) byId[String(p.id)] = entry;
         if (slug) bySlug[String(slug).toLowerCase()] = entry;
         if (fsSlug) byFsSlug[String(fsSlug).toLowerCase()] = entry;
@@ -219,7 +252,7 @@ export async function fetchPlatforms(url, token) {
       offset += limit;
       if (offset > 5000) break;
     }
-  } catch (e) {
+  } catch (e: any) {
     console.warn('fetchPlatforms failed:', e.message);
   }
   return { byId, bySlug, byFsSlug };

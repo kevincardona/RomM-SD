@@ -1,25 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authenticate, fetchLibrary } from '../api';
+import type { Config, Game, Library } from '../vite-env';
 
-const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG: Config = {
   url: '', username: '', password: '',
   token: '', emudeckPath: '~/Emulation/roms',
   gridSize: 'medium', showGameTitles: true,
   saveSyncEnabled: false, browserPlayEnabled: false,
-  biosLayout: 'emudeck', // 'emudeck' (per-platform subfolder) | 'flat' | 'auto'
+  biosLayout: 'emudeck',
 };
 
-function isValidRom(g) {
+function isValidRom(g: Game): boolean {
   if (!g.filename || !g.emuFolder) return false;
   const lower = g.filename.toLowerCase();
   return !lower.endsWith('.sav') && !lower.endsWith('.srm');
 }
 
-function expandPath(p, homeDir) {
+function expandPath(p: string, homeDir: string): string {
   return p.startsWith('~') ? p.replace('~', homeDir) : p;
 }
 
-async function detectDefaultPath() {
+async function detectDefaultPath(): Promise<string> {
   if (!window.electronAPI) return '~/Emulation/roms';
   const homeDir = await window.electronAPI.getHomeDir();
   const homePath = `${homeDir}/Emulation/roms`;
@@ -29,19 +30,24 @@ async function detectDefaultPath() {
   return '~/Emulation/roms';
 }
 
+export interface LibraryLoadResult {
+  platforms: string[];
+  collections: string[];
+}
+
 export function useRomLibrary() {
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [library, setLibrary] = useState({ platforms: {}, collections: {}, all: [] });
+  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
+  const [library, setLibrary] = useState<Library>({ platforms: {}, collections: {}, all: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedGame, setSelectedGame] = useState(null);
+  const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [showWizard, setShowWizard] = useState(false);
 
-  const decorateGames = useCallback(async (games, basePath) => {
-    const homeDir = await window.electronAPI.getHomeDir();
+  const decorateGames = useCallback(async (games: Game[], basePath: string): Promise<Game[]> => {
+    const homeDir = await window.electronAPI!.getHomeDir();
     const expandedBase = expandPath(basePath, homeDir);
     const paths = games.map(g => `${expandedBase}/${g.emuFolder}/${g.filename}`);
-    const res = await window.electronAPI.checkBulkFiles(paths);
+    const res = await window.electronAPI!.checkBulkFiles(paths);
     if (!res.success) return games;
     games.forEach((g, i) => {
       g.downloaded = res.results[i];
@@ -50,17 +56,17 @@ export function useRomLibrary() {
     return games;
   }, []);
 
-  const processLibrary = useCallback(async (lib, basePath) => {
+  const processLibrary = useCallback(async (lib: Library, basePath: string) => {
     lib.all = lib.all.filter(isValidRom);
     lib.all = await decorateGames(lib.all, basePath);
     setLibrary(lib);
   }, [decorateGames]);
 
-  const loadLibrary = useCallback(async (url, token, basePath) => {
+  const loadLibrary = useCallback(async (url: string, token: string, basePath: string): Promise<LibraryLoadResult | null> => {
     try {
       const cached = localStorage.getItem('romm_library');
       if (cached) {
-        const lib = JSON.parse(cached);
+        const lib: Library = JSON.parse(cached);
         await processLibrary(lib, basePath);
         setLoading(false);
       }
@@ -69,7 +75,7 @@ export function useRomLibrary() {
       await processLibrary(lib, basePath);
       setLoading(false);
       return { platforms: Object.keys(lib.platforms).sort(), collections: Object.keys(lib.collections).sort() };
-    } catch (err) {
+    } catch (err: any) {
       setError(`Library Error: ${err.message}`);
       setLoading(false);
       return null;
@@ -97,7 +103,7 @@ export function useRomLibrary() {
     if (!window.electronAPI?.onDownloadProgress) return;
     const unsubscribe = window.electronAPI.onDownloadProgress(({ id, percent }) => {
       setLibrary(prev => {
-        const newLib = { ...prev };
+        const newLib: Library = { ...prev };
         const g = newLib.all.find(x => x.id === id);
         if (g) g.downloadProgress = percent;
         return newLib;
@@ -107,25 +113,25 @@ export function useRomLibrary() {
     return () => { unsubscribe && unsubscribe(); };
   }, []);
 
-  const saveAndConnect = useCallback(async (overrideConfig) => {
+  const saveAndConnect = useCallback(async (overrideConfig?: Config): Promise<LibraryLoadResult | null> => {
     const cfg = overrideConfig || config;
     setLoading(true);
     setError('');
     try {
       const token = await authenticate(cfg.url, cfg.username, cfg.password);
-      const newConfig = { ...cfg, token };
-      await window.electronAPI.saveConfig(newConfig);
+      const newConfig: Config = { ...cfg, token };
+      await window.electronAPI!.saveConfig(newConfig);
       setConfig(newConfig);
       const ok = await loadLibrary(newConfig.url, token, newConfig.emudeckPath);
       return ok;
-    } catch (err) {
+    } catch (err: any) {
       setError(`Auth Error: ${err.message}`);
       setLoading(false);
       return null;
     }
   }, [config, loadLibrary]);
 
-  const testConnection = useCallback(async ({ url, username, password }) => {
+  const testConnection = useCallback(async ({ url, username, password }: { url: string; username: string; password: string }): Promise<boolean> => {
     try {
       await authenticate(url, username, password);
       return true;
@@ -134,25 +140,25 @@ export function useRomLibrary() {
     }
   }, []);
 
-  const completeWizard = useCallback(async (wizardConfig) => {
+  const completeWizard = useCallback(async (wizardConfig: Partial<Config>) => {
     setShowWizard(false);
     setConfig(prev => ({ ...prev, ...wizardConfig }));
-    await saveAndConnect({ ...config, ...wizardConfig });
+    await saveAndConnect({ ...config, ...wizardConfig } as Config);
   }, [config, saveAndConnect]);
 
   const reopenWizard = useCallback(() => setShowWizard(true), []);
   const closeWizard = useCallback(() => setShowWizard(false), []);
 
-  const updateConfig = useCallback(async (patch) => {
-    const next = { ...config, ...patch };
+  const updateConfig = useCallback(async (patch: Partial<Config>) => {
+    const next: Config = { ...config, ...patch };
     setConfig(next);
-    try { await window.electronAPI.saveConfig(next); }
-    catch (e) { setError(`Save failed: ${e.message}`); }
+    try { await window.electronAPI!.saveConfig(next); }
+    catch (e: any) { setError(`Save failed: ${e.message}`); }
   }, [config]);
 
-  const updateGameStatus = useCallback((game, downloaded) => {
+  const updateGameStatus = useCallback((game: Game, downloaded: boolean) => {
     setLibrary(prev => {
-      const newLib = { ...prev };
+      const newLib: Library = { ...prev };
       const g = newLib.all.find(x => x.id === game.id);
       if (g) {
         g.downloaded = downloaded;
@@ -165,17 +171,17 @@ export function useRomLibrary() {
       : prev);
   }, []);
 
-  const downloadGame = useCallback(async (game) => {
-    const res = await window.electronAPI.downloadRom({
+  const downloadGame = useCallback(async (game: Game) => {
+    const res = await window.electronAPI!.downloadRom({
       id: game.id, url: game.downloadUrl,
-      destinationPath: game.localPath, token: config.token,
+      destinationPath: game.localPath!, token: config.token,
     });
     if (res.success) updateGameStatus(game, true);
     return res;
   }, [config.token, updateGameStatus]);
 
-  const deleteGame = useCallback(async (game) => {
-    await window.electronAPI.deleteFile(game.localPath);
+  const deleteGame = useCallback(async (game: Game) => {
+    await window.electronAPI!.deleteFile(game.localPath!);
     updateGameStatus(game, false);
   }, [updateGameStatus]);
 

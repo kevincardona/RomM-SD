@@ -1,17 +1,25 @@
 import React from 'react';
 import AuthImage from '../components/AuthImage';
 import Focusable from '../components/Focusable';
+import type { Library } from '../vite-env';
 
-export default function CollectionsPage({ collections, library, token, onCollectionSelect }) {
+interface CollectionsPageProps {
+  collections: string[];
+  library: Library;
+  token: string;
+  onCollectionSelect: (c: string) => void;
+}
+
+export default function CollectionsPage({ collections, library, token, onCollectionSelect }: CollectionsPageProps) {
   return (
     <>
       <div className="topbar">
         <h2 style={{ margin: 0 }}>All Collections</h2>
       </div>
       <div className="content-area">
-        <div className="game-grid" style={{ '--grid-card-width': '200px' }}>
+        <div className="game-grid" style={{ '--grid-card-width': '200px' } as React.CSSProperties}>
           {collections.map(c => {
-            const games = library.collections[c];
+            const games = library.collections[c] || [];
             const coverUrl = games[0]?.coverUrl;
             return (
               <Focusable

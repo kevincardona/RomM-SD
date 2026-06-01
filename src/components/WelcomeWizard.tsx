@@ -1,28 +1,38 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
+import type { Config } from '../vite-env';
 
 const STEPS = {
   WELCOME: 'welcome',
   SERVER: 'server',
   ROMS: 'roms',
   SUCCESS: 'success',
-};
+} as const;
 
-const ORDER = [STEPS.WELCOME, STEPS.SERVER, STEPS.ROMS, STEPS.SUCCESS];
+type StepId = typeof STEPS[keyof typeof STEPS];
 
-export default function WelcomeWizard({ onComplete, initialConfig, onTestConnection, onClose }) {
-  const [step, setStep] = useState(STEPS.WELCOME);
+const ORDER: StepId[] = [STEPS.WELCOME, STEPS.SERVER, STEPS.ROMS, STEPS.SUCCESS];
+
+interface WelcomeWizardProps {
+  onComplete: (config: Partial<Config>) => void | Promise<void>;
+  initialConfig?: Config;
+  onTestConnection: (creds: { url: string; username: string; password: string }) => Promise<boolean>;
+  onClose?: () => void;
+}
+
+export default function WelcomeWizard({ onComplete, initialConfig, onTestConnection, onClose }: WelcomeWizardProps) {
+  const [step, setStep] = useState<StepId>(STEPS.WELCOME);
   const [testing, setTesting] = useState(false);
-  const [testError, setTestError] = useState(null);
+  const [testError, setTestError] = useState<string | null>(null);
   const [testOk, setTestOk] = useState(false);
   const [showWizardPassword, setShowWizardPassword] = useState(false);
-  const [passwordSaved, setPasswordSaved] = useState(!!(initialConfig?.password));
+  const [passwordSaved, setPasswordSaved] = useState<boolean>(!!(initialConfig?.password));
   const [config, setConfig] = useState({
     url: initialConfig?.url || 'http://',
     username: initialConfig?.username || '',
     password: initialConfig?.password || '',
   });
-  const [romsPath, setRomsPath] = useState(initialConfig?.emudeckPath || '~/Emulation/roms');
+  const [romsPath, setRomsPath] = useState<string>(initialConfig?.emudeckPath || '~/Emulation/roms');
 
   const stepIndex = ORDER.indexOf(step);
 
@@ -43,7 +53,7 @@ export default function WelcomeWizard({ onComplete, initialConfig, onTestConnect
   };
 
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         closeOrPrev();
@@ -61,7 +71,7 @@ export default function WelcomeWizard({ onComplete, initialConfig, onTestConnect
       const ok = await onTestConnection(config);
       if (ok) { setTestOk(true); setPasswordSaved(true); }
       else setTestError('Could not reach the server. Check the URL and try again.');
-    } catch (e) {
+    } catch (e: any) {
       setTestError(e.message);
     }
     setTesting(false);
@@ -282,7 +292,7 @@ export default function WelcomeWizard({ onComplete, initialConfig, onTestConnect
   );
 }
 
-function ControllerHint({ button, label }) {
+function ControllerHint({ button, label }: { button: string; label: string }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
       <span style={{

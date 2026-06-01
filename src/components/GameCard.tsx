@@ -1,8 +1,18 @@
 import React from 'react';
 import AuthImage from './AuthImage';
 import Focusable from './Focusable';
+import type { Game, Config } from '../vite-env';
 
-export default function GameCard({ game, token, onClick, onContextMenu, config, id }) {
+interface GameCardProps {
+  game: Game;
+  token: string;
+  onClick: (game: Game) => void;
+  onContextMenu: (game: Game) => void;
+  config?: Config;
+  id?: string;
+}
+
+export default function GameCard({ game, token, onClick, onContextMenu, config, id }: GameCardProps) {
   return (
     <Focusable
       id={id}

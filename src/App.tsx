@@ -14,6 +14,7 @@ import SaveSyncPage from './pages/SaveSyncPage';
 import WelcomeWizard from './components/WelcomeWizard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { isBrowserPlaySupported } from './browserPlaySupport';
+import type { Game, Tab } from './vite-env';
 
 export default function App() {
   const {
@@ -23,10 +24,10 @@ export default function App() {
     showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
   } = useRomLibrary();
 
-  const searchRef = useRef(null);
-  const letterNavRef = useRef(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const letterNavRef = useRef<{ scrollToLetter: (l: string) => void; letterOffset: (d: number) => void } | null>(null);
   const onSearchFocus = useCallback(() => {
-    const el = searchRef.current || document.querySelector('.search-input');
+    const el = searchRef.current || document.querySelector<HTMLInputElement>('.search-input');
     if (el) { el.focus(); el.select(); }
   }, []);
   const onLetterPrev = useCallback(() => letterNavRef.current?.letterOffset(-1), []);
@@ -34,12 +35,12 @@ export default function App() {
 
   useSpatialNavigation(false);
 
-  const [activeTab, setActiveTab] = useState('library_all');
-  const [selectedPlatform, setSelectedPlatform] = useState(null);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [downloadedOnly, setDownloadedOnly] = useState(false);
-  const [playInBrowserOnly, setPlayInBrowserOnly] = useState(false);
-  const [showCollectionsRoot, setShowCollectionsRoot] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>('library_all');
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
+  const [downloadedOnly, setDownloadedOnly] = useState<boolean>(false);
+  const [playInBrowserOnly, setPlayInBrowserOnly] = useState<boolean>(false);
+  const [showCollectionsRoot, setShowCollectionsRoot] = useState<boolean>(true);
 
   useEffect(() => { if (activeTab === 'collections') setShowCollectionsRoot(true); }, [activeTab]);
 
@@ -50,11 +51,11 @@ export default function App() {
     }
   }, [library.collections, selectedCollection]);
 
-  const currentGames = useMemo(() => {
-    let list;
+  const currentGames: Game[] = useMemo(() => {
+    let list: Game[];
     if (activeTab === 'library_all') list = library.all;
-    else if (activeTab === 'platforms') list = library.platforms[selectedPlatform] || [];
-    else if (activeTab === 'collections') list = library.collections[selectedCollection] || [];
+    else if (activeTab === 'platforms') list = library.platforms[selectedPlatform || ''] || [];
+    else if (activeTab === 'collections') list = library.collections[selectedCollection || ''] || [];
     else if (activeTab === 'downloaded') list = library.all.filter(g => g.downloaded || isBrowserPlaySupported(g.emuFolder));
     else list = [];
     if (downloadedOnly) list = list.filter(g => g.downloaded);
@@ -69,20 +70,20 @@ export default function App() {
     return 'My Library';
   }, [activeTab, selectedPlatform, selectedCollection]);
 
-  const onGameSelect = useCallback((game) => setSelectedGame(game), [setSelectedGame]);
+  const onGameSelect = useCallback((game: Game) => setSelectedGame(game), [setSelectedGame]);
   const onCloseModal = useCallback(() => setSelectedGame(null), [setSelectedGame]);
-  const onCollectionSelect = useCallback((c) => {
+  const onCollectionSelect = useCallback((c: string) => {
     setSelectedCollection(c);
     setShowCollectionsRoot(false);
   }, [setSelectedCollection]);
 
   const onContextMenu = useCallback(() => {
-    const el = document.activeElement;
-    const id = el?.dataset?.gameId || el?.closest?.('.game-card')?.dataset?.gameId;
+    const el = document.activeElement as HTMLElement | null;
+    const id = el?.dataset?.gameId || el?.closest?.('.game-card')?.getAttribute?.('data-game-id');
     if (!id) return;
     const game = library.all.find(g => String(g.id) === String(id));
     if (game) setSelectedGame(game);
-  }, [library.all]);
+  }, [library.all, setSelectedGame]);
 
   useController({ onSearchFocus, onLetterPrev, onLetterNext, onContextMenu }, false);
 

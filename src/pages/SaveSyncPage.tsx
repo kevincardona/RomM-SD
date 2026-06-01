@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Focusable from '../components/Focusable';
+import type { Config, Library } from '../vite-env';
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   synced: { label: 'Synced', color: '#4caf50' },
   new: { label: 'New save', color: '#00e5ff' },
   modified: { label: 'Modified locally', color: '#ff9800' },
   'behind-cloud': { label: 'Cloud has newer', color: '#9c27b0' },
 };
 
-function timeAgo(ts) {
+function timeAgo(ts: number | null | undefined): string {
   if (!ts) return '—';
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
@@ -21,16 +22,48 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString();
 }
 
-function fmtBytes(n) {
+function fmtBytes(n: number | null | undefined): string {
   if (!n) return '0 B';
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
-function GameSaveCard({ game, onPush, onPull, onDelete, busy, expanded, onToggle }) {
+interface SaveCover {
+  name: string;
+  status: string;
+  localSize?: number;
+  localMtimeMs?: number;
+  lastUploaded?: { uploadedAt: number };
+}
+
+interface SaveMeta {
+  uploadedAt?: number;
+}
+
+interface SaveGame {
+  id: string | number;
+  title: string;
+  platform: string;
+  localPath: string;
+  emuFolder: string;
+  covers: SaveCover[];
+  meta: Record<string, SaveMeta>;
+}
+
+interface GameSaveCardProps {
+  game: SaveGame;
+  onPush: (game: SaveGame) => void;
+  onPull: (game: SaveGame) => void;
+  onDelete: (game: SaveGame, fileName: string) => void;
+  busy: boolean;
+  expanded: boolean;
+  onToggle: (id: string | number) => void;
+}
+
+function GameSaveCard({ game, onPush, onPull, onDelete, busy, expanded, onToggle }: GameSaveCardProps) {
   const summary = React.useMemo(() => {
-    const counts = { new: 0, modified: 0, 'behind-cloud': 0, synced: 0 };
+    const counts: Record<string, number> = { new: 0, modified: 0, 'behind-cloud': 0, synced: 0 };
     for (const c of game.covers) counts[c.status] = (counts[c.status] || 0) + 1;
     return counts;
   }, [game.covers]);
@@ -143,26 +176,39 @@ function GameSaveCard({ game, onPush, onPull, onDelete, busy, expanded, onToggle
   );
 }
 
-export default function SaveSyncPage({ library, config, enabled }) {
-  const [games, setGames] = useState([]);
+interface SaveSyncPageProps {
+  library: Library;
+  config: Config;
+  enabled: boolean;
+}
+
+interface LastResult {
+  type: 'push' | 'pull' | 'error';
+  game?: string;
+  message?: string;
+  res?: any;
+}
+
+export default function SaveSyncPage({ library, config, enabled }: SaveSyncPageProps) {
+  const [games, setGames] = useState<SaveGame[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyIds, setBusyIds] = useState(new Set());
-  const [expanded, setExpanded] = useState({});
-  const [lastResult, setLastResult] = useState(null);
-  const [filter, setFilter] = useState('all');
+  const [busyIds, setBusyIds] = useState<Set<string | number>>(new Set());
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [lastResult, setLastResult] = useState<LastResult | null>(null);
+  const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
-  const firstBtnRef = useRef(null);
+  const firstBtnRef = useRef<HTMLButtonElement>(null);
 
   const load = useCallback(async () => {
     if (!config) { setLoading(false); return; }
     setLoading(true);
     try {
-      const homeDir = await window.electronAPI.getHomeDir();
-      const list = await window.electronAPI.listGamesWithSaves({
+      const homeDir = await window.electronAPI!.getHomeDir();
+      const list = await window.electronAPI!.listGamesWithSaves({
         library, homeDir, emudeckPath: config.emudeckPath,
       });
-      setGames(list);
+      setGames(list as SaveGame[]);
     } catch (e) {
       console.error('Failed to list games with saves:', e);
     }
@@ -208,7 +254,7 @@ export default function SaveSyncPage({ library, config, enabled }) {
     );
   }
 
-  const setBusy = (id, busy) => {
+  const setBusy = (id: string | number, busy: boolean) => {
     setBusyIds(prev => {
       const n = new Set(prev);
       if (busy) n.add(id); else n.delete(id);
@@ -216,86 +262,36 @@ export default function SaveSyncPage({ library, config, enabled }) {
     });
   };
 
-  const handlePush = async (game) => {
+  const handlePush = async (game: SaveGame) => {
     setBusy(game.id, true);
     try {
-      const homeDir = await window.electronAPI.getHomeDir();
-      const res = await window.electronAPI.pushSaves({
+      const homeDir = await window.electronAPI!.getHomeDir();
+      const res = await window.electronAPI!.pushSaves({
         localPath: game.localPath, emuFolder: game.emuFolder,
         emudeckPath: config.emudeckPath, homeDir,
       });
       setLastResult({ type: 'push', game: game.title, res });
       await load();
-    } catch (e) {
+    } catch (e: any) {
       setLastResult({ type: 'error', message: e.message });
     }
     setBusy(game.id, false);
   };
 
-  const handlePull = async (game) => {
+  const handlePull = async (game: SaveGame) => {
     setBusy(game.id, true);
     try {
-      const homeDir = await window.electronAPI.getHomeDir();
-      const res = await window.electronAPI.pullSaves({
+      const homeDir = await window.electronAPI!.getHomeDir();
+      const res = await window.electronAPI!.pullSaves({
         localPath: game.localPath, emuFolder: game.emuFolder,
         emudeckPath: config.emudeckPath, homeDir,
       });
       setLastResult({ type: 'pull', game: game.title, res });
       await load();
-    } catch (e) {
+    } catch (e: any) {
       setLastResult({ type: 'error', message: e.message });
     }
     setBusy(game.id, false);
-  };
-
-  const handlePushAll = async () => {
-    const conflicts = filtered.filter(g => g.covers.some(c => c.status === 'new' || c.status === 'modified'));
-    if (conflicts.length === 0) return;
-    for (const g of conflicts) {
-      setBusy(g.id, true);
-      try {
-        const homeDir = await window.electronAPI.getHomeDir();
-        await window.electronAPI.pushSaves({
-          localPath: g.localPath, emuFolder: g.emuFolder,
-          emudeckPath: config.emudeckPath, homeDir,
-        });
-      } catch (e) { console.error(e); }
-      setBusy(g.id, false);
-    }
-    await load();
-  };
-
-  const handlePullAll = async () => {
-    const behind = filtered.filter(g => g.covers.some(c => c.status === 'behind-cloud'));
-    if (behind.length === 0) return;
-    for (const g of behind) {
-      setBusy(g.id, true);
-      try {
-        const homeDir = await window.electronAPI.getHomeDir();
-        await window.electronAPI.pullSaves({
-          localPath: g.localPath, emuFolder: g.emuFolder,
-          emudeckPath: config.emudeckPath, homeDir,
-        });
-      } catch (e) { console.error(e); }
-      setBusy(g.id, false);
-    }
-    await load();
-  };
-
-  const handleDelete = async (game, fileName) => {
-    if (!window.confirm(`Delete save "${fileName}" from disk and cache?`)) return;
-    setBusy(game.id, true);
-    try {
-      await window.electronAPI.deleteSaveFile({
-        localPath: game.localPath, emuFolder: game.emuFolder, fileName,
-      });
-      await load();
-    } catch (e) { console.error(e); }
-    setBusy(game.id, false);
-  };
-
-  const handleToggle = (id) => {
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const filtered = React.useMemo(() => {
@@ -317,7 +313,7 @@ export default function SaveSyncPage({ library, config, enabled }) {
   }, [games, filter, search]);
 
   const counts = React.useMemo(() => {
-    const c = { all: games.length, new: 0, modified: 0, 'behind-cloud': 0, synced: 0 };
+    const c: Record<string, number> = { all: games.length, new: 0, modified: 0, 'behind-cloud': 0, synced: 0 };
     for (const g of games) {
       for (const f of g.covers) {
         if (f.status === 'new') c.new++;
@@ -328,6 +324,56 @@ export default function SaveSyncPage({ library, config, enabled }) {
     }
     return c;
   }, [games]);
+
+  const handlePushAll = async () => {
+    const conflicts = filtered.filter(g => g.covers.some(c => c.status === 'new' || c.status === 'modified'));
+    if (conflicts.length === 0) return;
+    for (const g of conflicts) {
+      setBusy(g.id, true);
+      try {
+        const homeDir = await window.electronAPI!.getHomeDir();
+        await window.electronAPI!.pushSaves({
+          localPath: g.localPath, emuFolder: g.emuFolder,
+          emudeckPath: config.emudeckPath, homeDir,
+        });
+      } catch (e) { console.error(e); }
+      setBusy(g.id, false);
+    }
+    await load();
+  };
+
+  const handlePullAll = async () => {
+    const behind = filtered.filter(g => g.covers.some(c => c.status === 'behind-cloud'));
+    if (behind.length === 0) return;
+    for (const g of behind) {
+      setBusy(g.id, true);
+      try {
+        const homeDir = await window.electronAPI!.getHomeDir();
+        await window.electronAPI!.pullSaves({
+          localPath: g.localPath, emuFolder: g.emuFolder,
+          emudeckPath: config.emudeckPath, homeDir,
+        });
+      } catch (e) { console.error(e); }
+      setBusy(g.id, false);
+    }
+    await load();
+  };
+
+  const handleDelete = async (game: SaveGame, fileName: string) => {
+    if (!window.confirm(`Delete save "${fileName}" from disk and cache?`)) return;
+    setBusy(game.id, true);
+    try {
+      await window.electronAPI!.deleteSaveFile({
+        localPath: game.localPath, emuFolder: game.emuFolder, fileName,
+      });
+      await load();
+    } catch (e) { console.error(e); }
+    setBusy(game.id, false);
+  };
+
+  const handleToggle = (id: string | number) => {
+    setExpanded(prev => ({ ...prev, [String(id)]: !prev[String(id)] }));
+  };
 
   return (
     <>
@@ -417,8 +463,8 @@ export default function SaveSyncPage({ library, config, enabled }) {
             fontSize: '0.85rem',
           }}>
             {lastResult.type === 'error' && `Error: ${lastResult.message}`}
-            {lastResult.type === 'push' && `Pushed ${lastResult.res?.results?.filter(r => r.success).length || 0} save(s) for ${lastResult.game}`}
-            {lastResult.type === 'pull' && `Pulled ${lastResult.res?.results?.filter(r => r.success).length || 0} save(s) for ${lastResult.game}`}
+            {lastResult.type === 'push' && `Pushed ${lastResult.res?.results?.filter((r: any) => r.success).length || 0} save(s) for ${lastResult.game}`}
+            {lastResult.type === 'pull' && `Pulled ${lastResult.res?.results?.filter((r: any) => r.success).length || 0} save(s) for ${lastResult.game}`}
           </div>
         )}
 
@@ -432,7 +478,7 @@ export default function SaveSyncPage({ library, config, enabled }) {
             No games with save files detected. Once you play a downloaded game, its saves will show up here.
           </div>
         ) : (
-          <div className="game-grid" style={{ '--grid-card-width': '360px' }}>
+          <div className="game-grid" style={{ '--grid-card-width': '360px' } as React.CSSProperties}>
             {filtered.map(g => (
               <GameSaveCard
                 key={g.id}
@@ -441,7 +487,7 @@ export default function SaveSyncPage({ library, config, enabled }) {
                 onPull={handlePull}
                 onDelete={handleDelete}
                 busy={busyIds.has(g.id)}
-                expanded={!!expanded[g.id]}
+                expanded={!!expanded[String(g.id)]}
                 onToggle={handleToggle}
               />
             ))}

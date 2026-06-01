@@ -1,11 +1,18 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, ReactNode } from 'react';
 
-export default function Modal({ onClose, children, maxWidth, width }) {
-  const ref = useRef(null);
-  const previousFocus = useRef(null);
+interface ModalProps {
+  onClose: () => void;
+  children: ReactNode | ((api: { refocusFirst: () => void }) => ReactNode);
+  maxWidth?: string | number;
+  width?: string | number;
+}
+
+export default function Modal({ onClose, children, maxWidth, width }: ModalProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    previousFocus.current = document.activeElement;
+    previousFocus.current = document.activeElement as HTMLElement | null;
     return () => {
       if (previousFocus.current && document.body.contains(previousFocus.current)) {
         previousFocus.current.focus();
@@ -17,14 +24,14 @@ export default function Modal({ onClose, children, maxWidth, width }) {
     const id = setTimeout(() => {
       const el = ref.current;
       if (!el) return;
-      const focusable = el.querySelector('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]):not([tabindex="-1"])');
+      const focusable = el.querySelector<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled]), input:not([disabled]):not([tabindex="-1"])');
       if (focusable) focusable.focus();
     }, 0);
     return () => clearTimeout(id);
   });
 
   const refocusFirst = () => {
-    const first = ref.current?.querySelector('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])');
+    const first = ref.current?.querySelector<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])');
     if (first) first.focus();
   };
 

@@ -1,20 +1,40 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchFirmware, fetchPlatforms } from '../api';
+import { fetchFirmware, fetchPlatforms, type FirmwareEntry, type PlatformIndex } from '../api';
 import Focusable from '../components/Focusable';
+import type { Config } from '../vite-env';
 
-function biosBasePath(emudeckPath, homeDir) {
+interface InstallPath {
+  emulator: string;
+  path: string;
+  kind?: string;
+}
+
+interface ResolvedFirmware extends FirmwareEntry {
+  subFolder?: string;
+  platformSlug?: string;
+  platformFsSlug?: string;
+  platformIdResolved?: string | number;
+  platformLabel?: string;
+  installPaths?: InstallPath[];
+  localPath?: string;
+  isSwitchKey?: boolean;
+  downloaded?: boolean;
+  downloadUrl?: string;
+}
+
+function biosBasePath(emudeckPath: string | undefined, homeDir: string): string {
   const base = (emudeckPath || '~/Emulation/roms').startsWith('~')
     ? (emudeckPath || '~/Emulation/roms').replace('~', homeDir)
     : (emudeckPath || '~/Emulation/roms');
   return base.replace(/\/roms$/, '/bios');
 }
 
-function platformLabel(fw, platformMap) {
+function platformLabel(fw: ResolvedFirmware | FirmwareEntry, platformMap: PlatformIndex | null): string {
   if (fw.platform && typeof fw.platform === 'object') {
     return fw.platform.display_name || fw.platform.name || fw.platform.slug || `Platform ${fw.platform.id ?? ''}`;
   }
   if (fw.platform_display_name) return fw.platform_display_name;
-  if (fw.platform_name) return fw.platform_name;
+  if ((fw as any).platform_name) return (fw as any).platform_name;
   if (fw.platform_slug != null && platformMap?.bySlug?.[String(fw.platform_slug).toLowerCase()]) {
     return platformMap.bySlug[String(fw.platform_slug).toLowerCase()].display;
   }
@@ -26,11 +46,11 @@ function platformLabel(fw, platformMap) {
   return 'General / Unknown System';
 }
 
-function platformIcon(fw, platformMap) {
+function platformIcon(fw: ResolvedFirmware | FirmwareEntry, platformMap: PlatformIndex | null): string | null {
   if (fw.platform && typeof fw.platform === 'object') {
-    return fw.platform.iconUrl || null;
+    return (fw.platform as any).iconUrl || null;
   }
-  if (fw.platform_icon) return fw.platform_icon;
+  if ((fw as any).platform_icon) return (fw as any).platform_icon;
   if (fw.platform_slug != null && platformMap?.bySlug?.[String(fw.platform_slug).toLowerCase()]) {
     return platformMap.bySlug[String(fw.platform_slug).toLowerCase()].iconUrl || null;
   }
@@ -40,24 +60,26 @@ function platformIcon(fw, platformMap) {
   return null;
 }
 
-export default function FirmwarePage({ config }) {
-  const [firmware, setFirmware] = useState([]);
-  const [platformMap, setPlatformMap] = useState({ byId: {}, bySlug: {} });
+interface FirmwarePageProps {
+  config: Config;
+}
+
+export default function FirmwarePage({ config }: FirmwarePageProps) {
+  const [firmware, setFirmware] = useState<ResolvedFirmware[]>([]);
+  const [platformMap, setPlatformMap] = useState<PlatformIndex>({ byId: {}, bySlug: {}, byFsSlug: {} });
   const [loading, setLoading] = useState(true);
   const [biosPath, setBiosPath] = useState('');
-  const [progress, setProgress] = useState({});
-  const [homeDir, setHomeDir] = useState('');
+  const [progress, setProgress] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
-    let unsubscribe = null;
+    let unsubscribe: (() => void) | null = null;
 
     async function load() {
       if (!config.url || !config.token) { setLoading(false); return; }
       try {
-        const hd = await window.electronAPI.getHomeDir();
+        const hd = await window.electronAPI!.getHomeDir();
         if (cancelled) return;
-        setHomeDir(hd);
         const path = biosBasePath(config.emudeckPath, hd);
         if (cancelled) return;
         setBiosPath(path);
@@ -83,44 +105,48 @@ export default function FirmwarePage({ config }) {
           const slugResolved = (slugFromObject || slugFromField || platformFromMap?.slug || '').toString().toLowerCase();
           const fsSlugResolved = (fsSlugFromObject || fsSlugFromField || platformFromMap?.fsSlug || slugResolved || '').toString().toLowerCase();
 
-          fw.subFolder = fsSlugResolved || slugResolved;
-          fw.platformSlug = slugResolved;
-          fw.platformFsSlug = fsSlugResolved;
-          fw.platformIdResolved = idResolved;
-          fw.platformLabel = platformFromMap?.display
-            || (platformObj?.display_name || platformObj?.name)
-            || fw.platform_display_name
-            || fw.platform_name
-            || (fw.subFolder || null);
-
-          // Resolve install paths via the Electron helper (EmuDeck-aware)
-          const fileName = fw.file_name || fw.filename;
-          const resolved = await window.electronAPI.resolveBiosPaths({
-            fsSlug: fw.platformFsSlug,
-            slug: fw.platformSlug,
+          const fileName = (fw as any).file_name || (fw as any).filename;
+          const resolved: any = await window.electronAPI!.resolveBiosPaths({
+            fsSlug: fsSlugResolved,
+            slug: slugResolved,
             fileName,
             emudeckPath: config.emudeckPath,
             layout: config.biosLayout || 'emudeck',
             homeDir: hd,
           }).catch(() => null);
-          if (resolved?.success && resolved.paths?.length) {
-            fw.installPaths = resolved.paths;
-            fw.localPath = resolved.paths[0].path;
-            fw.isSwitchKey = resolved.paths.some(p => p.kind === 'switch-key');
-          } else {
-            fw.installPaths = [{ emulator: 'EmuDeck BIOS root', path: fw.subFolder ? `${path}/${fw.subFolder}/${fileName}` : `${path}/${fileName}` }];
-            fw.localPath = fw.installPaths[0].path;
-            fw.isSwitchKey = false;
-          }
 
-          const fileCheck = await window.electronAPI.checkFileExists(fw.localPath);
-          fw.downloaded = fileCheck.exists;
-          fw.downloadUrl = fw.download_url
-            ? `${config.url.replace(/\/$/, '')}${fw.download_url}`
+          const localPath = resolved?.success && resolved.paths?.length
+            ? resolved.paths[0].path
+            : (fsSlugResolved ? `${path}/${fsSlugResolved}/${fileName}` : `${path}/${fileName}`);
+
+          const isSwitchKey = resolved?.success && resolved.paths?.some((p: InstallPath) => p.kind === 'switch-key');
+
+          const merged: ResolvedFirmware = {
+            ...fw,
+            subFolder: fsSlugResolved || slugResolved,
+            platformSlug: slugResolved,
+            platformFsSlug: fsSlugResolved,
+            platformIdResolved: idResolved,
+            platformLabel: platformFromMap?.display
+              || (platformObj?.display_name || platformObj?.name)
+              || fw.platform_display_name
+              || (fw as any).platform_name
+              || (fsSlugResolved || null),
+            installPaths: resolved?.success && resolved.paths?.length ? resolved.paths : [{ emulator: 'EmuDeck BIOS root', path: localPath }],
+            localPath,
+            isSwitchKey: !!isSwitchKey,
+          };
+
+          const fileCheck = await window.electronAPI!.checkFileExists(localPath);
+          merged.downloaded = fileCheck.exists;
+          merged.downloadUrl = (fw as any).download_url
+            ? `${config.url.replace(/\/$/, '')}${(fw as any).download_url}`
             : `${config.url.replace(/\/$/, '')}/api/firmware/${fw.id}/content/${encodeURIComponent(fileName)}`;
+
+          if (cancelled) return;
         }
         if (cancelled) return;
-        setFirmware(data);
+        setFirmware(data as ResolvedFirmware[]);
       } catch (err) { console.error("Failed to load firmware", err); }
       if (!cancelled) setLoading(false);
     }
@@ -128,54 +154,53 @@ export default function FirmwarePage({ config }) {
 
     if (window.electronAPI?.onDownloadProgress) {
       unsubscribe = window.electronAPI.onDownloadProgress(({ id, percent }) => {
-        setProgress(prev => ({ ...prev, [id]: percent }));
+        setProgress(prev => ({ ...prev, [String(id)]: percent }));
       });
     }
 
     return () => { cancelled = true; if (unsubscribe) unsubscribe(); };
   }, [config]);
 
-  const handleDownload = async (fw) => {
-    setProgress(prev => ({ ...prev, [fw.id]: 0 }));
+  const handleDownload = async (fw: ResolvedFirmware) => {
+    setProgress(prev => ({ ...prev, [String(fw.id)]: 0 }));
     try {
-      // For multi-target files (Switch keys), write to all targets.
       const targets = fw.installPaths && fw.installPaths.length > 1
         ? fw.installPaths
         : [fw];
-      let lastResult = { success: false };
+      let lastResult: any = { success: false };
       for (const t of targets) {
-        const path = t.localPath || t.path;
-        const res = await window.electronAPI.downloadRom({
-          id: `${fw.id}::${path}`, url: fw.downloadUrl, destinationPath: path, token: config.token,
+        const path = (t as any).localPath || (t as any).path;
+        const res = await window.electronAPI!.downloadRom({
+          id: `${fw.id}::${path}`, url: fw.downloadUrl!, destinationPath: path, token: config.token,
         });
         lastResult = res;
         if (!res.success) break;
       }
       if (lastResult.success) {
-        setProgress(prev => { const n = { ...prev }; delete n[fw.id]; return n; });
+        setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
         setFirmware(prev => prev.map(f => f.id === fw.id ? { ...f, downloaded: true } : f));
       } else {
-        setProgress(prev => { const n = { ...prev }; delete n[fw.id]; return n; });
+        setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
         alert("Download failed: " + lastResult.error);
       }
-    } catch (e) {
-      setProgress(prev => { const n = { ...prev }; delete n[fw.id]; return n; });
+    } catch (e: any) {
+      setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
       alert("Error: " + e.message);
     }
   };
 
-  const handleDelete = async (fw) => {
+  const handleDelete = async (fw: ResolvedFirmware) => {
     try {
       const paths = (fw.installPaths || [{ path: fw.localPath }]).map(p => p.path);
       for (const p of paths) {
-        await window.electronAPI.deleteFile(p);
+        await window.electronAPI!.deleteFile(p);
       }
       setFirmware(prev => prev.map(f => f.id === fw.id ? { ...f, downloaded: false } : f));
-    } catch (e) { alert("Delete failed: " + e.message); }
+    } catch (e: any) { alert("Delete failed: " + e.message); }
   };
 
   const grouped = useMemo(() => {
-    return firmware.reduce((acc, fw) => {
+    return firmware.reduce((acc: Record<string, { items: ResolvedFirmware[]; icon: string | null; hasUnknownPlatform: boolean }>, fw) => {
       const plat = fw.platformLabel || platformLabel(fw, platformMap) || 'General / Unknown System';
       (acc[plat] = acc[plat] || { items: [], icon: platformIcon(fw, platformMap), hasUnknownPlatform: false });
       if (!fw.platformSlug) acc[plat].hasUnknownPlatform = true;
@@ -186,7 +211,7 @@ export default function FirmwarePage({ config }) {
 
   const refresh = () => {
     setFirmware([]);
-    setPlatformMap({ byId: {}, bySlug: {} });
+    setPlatformMap({ byId: {}, bySlug: {}, byFsSlug: {} });
     setLoading(true);
   };
 
@@ -242,7 +267,7 @@ export default function FirmwarePage({ config }) {
                         src={group.icon}
                         alt=""
                         style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }}
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                     ) : (
                       <span style={{ width: '32px', height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>?</span>
@@ -258,9 +283,9 @@ export default function FirmwarePage({ config }) {
                       {group.items.length} file{group.items.length === 1 ? '' : 's'}
                     </span>
                   </h3>
-                  <div className="game-grid" style={{ '--grid-card-width': '280px' }}>
+                  <div className="game-grid" style={{ '--grid-card-width': '280px' } as React.CSSProperties}>
                     {group.items.map(fw => {
-                      const pct = progress[fw.id];
+                      const pct = progress[String(fw.id)];
                       const downloading = pct !== undefined && pct < 100;
                       return (
                         <div
@@ -272,11 +297,11 @@ export default function FirmwarePage({ config }) {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
                               const btn = e.currentTarget.querySelector('button[data-primary]');
-                              if (btn) btn.click();
+                              if (btn) (btn as HTMLButtonElement).click();
                             }
                           }}
                         >
-                          <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{fw.file_name || fw.filename || fw.name}</div>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{(fw as any).file_name || (fw as any).filename || fw.name}</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                             {(fw.installPaths || []).map((p, i) => (
                               <div key={i} style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', display: 'flex', gap: '6px' }}>

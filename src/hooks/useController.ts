@@ -2,26 +2,26 @@ import { useEffect, useRef, useCallback } from 'react';
 
 const REPEAT_DELAY = 360;
 const REPEAT_INTERVAL = 130;
-const DEBOUNCE_MS = 55;  // short enough to register quick taps, long enough to dedupe
+const DEBOUNCE_MS = 55;
 const STICK_ENGAGE = 0.55;
 const STICK_RELEASE = 0.30;
 
-const NAV_MAP = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+const NAV_MAP: Record<string, string> = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 
-function fireNavKey(direction) {
+function fireNavKey(direction: string) {
   const key = NAV_MAP[direction];
   if (!key) return;
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
-function fireKey(key) {
+function fireKey(key: string) {
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
 
-function activateActive() {
-  const el = document.activeElement;
+function activateActive(): boolean {
+  const el = document.activeElement as HTMLElement | null;
   if (!el || el === document.body) return false;
   if (el.tagName === 'BUTTON') {
     el.click();
@@ -30,14 +30,37 @@ function activateActive() {
   return false;
 }
 
+interface HeldState {
+  fire: () => void;
+  nextFire: number;
+  lastFire: number;
+}
+
+interface AxisState {
+  direction: string | null;
+  lastValue: number;
+  lastFiredDirection?: string | null;
+  wasReleased?: boolean;
+  nextFire?: number;
+}
+
+export interface UseControllerOptions {
+  onSearchFocus?: () => void;
+  onConfirm?: () => void;
+  onBack?: () => void;
+  onLetterPrev?: () => void;
+  onLetterNext?: () => void;
+  onContextMenu?: () => void;
+}
+
 export function useController({
   onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu,
-} = {}, disabled = false) {
-  const held = useRef({});
-  const axisState = useRef({});
-  const lastFire = useRef({});
-  const rafRef = useRef(null);
-  const windowFocused = useRef(typeof document === 'undefined' || document.hasFocus());
+}: UseControllerOptions = {}, disabled: boolean = false) {
+  const held = useRef<Record<string, HeldState>>({});
+  const axisState = useRef<Record<string, AxisState>>({});
+  const lastFire = useRef<Record<string, number>>({});
+  const rafRef = useRef<number | null>(null);
+  const windowFocused = useRef<boolean>(typeof document === 'undefined' || document.hasFocus());
 
   useEffect(() => {
     const onFocus = () => { windowFocused.current = true; };
@@ -55,30 +78,30 @@ export function useController({
     };
   }, []);
 
-  const isTextFieldFocused = () => {
+  const isTextFieldFocused = (): boolean => {
     if (!windowFocused.current) return true;
-    const el = document.activeElement;
+    const el = document.activeElement as HTMLElement | null;
     if (!el) return false;
     const tag = el.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-    if (el.isContentEditable) return true;
+    if ((el as any).isContentEditable) return true;
     return false;
   };
 
-  const canFire = (key) => {
+  const canFire = (key: string): boolean => {
     const now = Date.now();
     if (now - (lastFire.current[key] || 0) < DEBOUNCE_MS) return false;
     lastFire.current[key] = now;
     return true;
   };
 
-  const press = useCallback((button, fn) => {
+  const press = useCallback((button: string, fn: () => void) => {
     if (!canFire(button)) return;
     fn();
     held.current[button] = { fire: fn, nextFire: Date.now() + REPEAT_DELAY, lastFire: Date.now() };
   }, []);
 
-  const handleButton = useCallback(({ button, state }) => {
+  const handleButton = useCallback(({ button, state }: { button: string; state: string }) => {
     if (state === 'up') {
       delete held.current[button];
       if (button === 'leftTrigger' || button === 'rightTrigger') {
@@ -89,7 +112,7 @@ export function useController({
     if (state !== 'down') return;
     if (disabled) return;
     const inText = isTextFieldFocused();
-    const inModal = !!document.activeElement?.closest('.modal-overlay');
+    const inModal = !!(document.activeElement as HTMLElement | null)?.closest('.modal-overlay');
 
     switch (button) {
       case 'dpadUp':
@@ -141,9 +164,9 @@ export function useController({
     }
   }, [onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu, press, disabled]);
 
-  const handleAxis = useCallback(({ axis, value }) => {
+  const handleAxis = useCallback(({ axis, value }: { axis: string; value: number }) => {
     if (disabled) return;
-    let direction = null;
+    let direction: string | null = null;
     if (axis === 'leftX') {
       if (value >  STICK_ENGAGE) direction = 'right';
       else if (value < -STICK_ENGAGE) direction = 'left';
@@ -153,8 +176,6 @@ export function useController({
     }
     const prev = axisState.current[axis];
     if (direction === null) {
-      // Released — mark `wasReleased: true` so the next engage re-fires
-      // even if the direction is the same as the last fired one.
       if (prev && prev.direction !== null) {
         axisState.current[axis] = { direction: null, lastValue: value, wasReleased: true };
       } else if (prev) {
@@ -164,10 +185,6 @@ export function useController({
       }
       return;
     }
-    // Engaged. We fire when:
-    //   (a) direction changed from the last fired direction (so opposite flips fire), OR
-    //   (b) we just released and re-engaged (stick is at a fresh engage position),
-    //       which we track via `wasReleased: true`.
     const lastFired = prev?.lastFiredDirection;
     const wasReleased = prev?.wasReleased === true;
     const isNewDirection = lastFired !== direction;
@@ -199,7 +216,7 @@ export function useController({
         }
       }
       for (const [axis, s] of Object.entries(axisState.current)) {
-        if (s && s.direction && now >= s.nextFire) {
+        if (s && s.direction && s.nextFire && now >= s.nextFire) {
           if (canFire(axis)) {
             fireNavKey(s.direction);
           }
@@ -209,7 +226,7 @@ export function useController({
       rafRef.current = requestAnimationFrame(tick);
     }
     rafRef.current = requestAnimationFrame(tick);
-    return () => { running = false; cancelAnimationFrame(rafRef.current); };
+    return () => { running = false; cancelAnimationFrame(rafRef.current!); };
   }, []);
 
   useEffect(() => {
@@ -223,9 +240,9 @@ export function useController({
   }, [handleButton, handleAxis]);
 
   useEffect(() => {
-    const onKey = (e) => {
-      const tag = (e.target && e.target.tagName) || '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target?.isContentEditable) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = ((e.target as HTMLElement | null)?.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement | null)?.isContentEditable) return;
       if (e.key === '[') { e.preventDefault(); onLetterPrev && onLetterPrev(); }
       else if (e.key === ']') { e.preventDefault(); onLetterNext && onLetterNext(); }
     };
@@ -234,6 +251,6 @@ export function useController({
   }, [onLetterPrev, onLetterNext]);
 }
 
-export function rumble(low = 0.3, high = 0.5, duration = 100) {
+export function rumble(low: number = 0.3, high: number = 0.5, duration: number = 100) {
   window.electronAPI?.controllerRumble({ low, high, duration });
 }

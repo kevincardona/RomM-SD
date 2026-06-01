@@ -1,6 +1,7 @@
-import React, { useState, useRef, useId } from 'react';
+import React, { useState, useRef, useId, ChangeEvent, FocusEvent, KeyboardEvent } from 'react';
+import type { Config } from '../vite-env';
 
-function EyeIcon({ open }) {
+function EyeIcon({ open }: { open: boolean }) {
   return open ? (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -14,15 +15,26 @@ function EyeIcon({ open }) {
   );
 }
 
-function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit, revealable = false, saved = false }) {
-  const inputRef = useRef(null);
+interface EditableSettingProps {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  type?: string;
+  onCommit?: () => void;
+  revealable?: boolean;
+  saved?: boolean;
+}
+
+function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit, revealable = false, saved = false }: EditableSettingProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const inputId = useId();
 
   const effectiveType = revealable ? (revealed ? 'text' : 'password') : type;
 
-  const activate = (e) => {
+  const activate = (e?: React.MouseEvent | React.KeyboardEvent) => {
     if (e) e.preventDefault();
     inputRef.current?.focus();
     inputRef.current?.select();
@@ -106,26 +118,41 @@ function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit
   );
 }
 
-export default function SettingsPage({ config, setConfig, updateConfig, onSave, error, onRerunWizard }) {
-  const [logs, setLogs] = useState('');
+interface DiagnosticResult {
+  name: string;
+  path: string;
+  exists: boolean;
+}
+
+interface SettingsPageProps {
+  config: Config;
+  setConfig: (config: Config) => void;
+  updateConfig: (patch: Partial<Config>) => Promise<void>;
+  onSave: () => Promise<any> | void;
+  error?: string;
+  onRerunWizard: () => void;
+}
+
+export default function SettingsPage({ config, setConfig, updateConfig, onSave, error, onRerunWizard }: SettingsPageProps) {
+  const [logs, setLogs] = useState<string>('');
   const [showLogs, setShowLogs] = useState(false);
-  const [diagnostics, setDiagnostics] = useState(null);
-  const [selfSteamMsg, setSelfSteamMsg] = useState(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticResult[] | null>(null);
+  const [selfSteamMsg, setSelfSteamMsg] = useState<string | null>(null);
 
   const handleAddSelfToSteam = async () => {
     setSelfSteamMsg(null);
-    const res = await window.electronAPI.addSelfToSteam();
+    const res = await window.electronAPI!.addSelfToSteam();
     setSelfSteamMsg(res.success ? '✓ Added! Restart Steam to see ROMM-SD.' : `✗ ${res.error}`);
   };
 
   const fetchLogs = async () => {
-    const l = await window.electronAPI.getLogs();
+    const l = await window.electronAPI!.getLogs();
     setLogs(l);
     setShowLogs(true);
   };
 
   const runDiagnostics = async () => {
-    const homeDir = await window.electronAPI.getHomeDir();
+    const homeDir = await window.electronAPI!.getHomeDir();
     const checks = [
       { name: 'ROMs Folder', path: config.emudeckPath.replace('~', homeDir) },
       { name: 'BIOS Folder', path: config.emudeckPath.replace('~', homeDir).replace('/roms', '/bios') },
@@ -143,10 +170,10 @@ export default function SettingsPage({ config, setConfig, updateConfig, onSave, 
       { name: 'Snes9x (Flatpak)', path: `${homeDir}/.var/app/org.snes9x.Snes9x` },
       { name: 'Simple64 (Flatpak)', path: `${homeDir}/.var/app/org.simple64.simple64-gui` },
     ];
-    
-    const results = [];
+
+    const results: DiagnosticResult[] = [];
     for (const check of checks) {
-      const res = await window.electronAPI.checkFileExists(check.path);
+      const res = await window.electronAPI!.checkFileExists(check.path);
       results.push({ ...check, exists: res.exists });
     }
     setDiagnostics(results);
@@ -198,7 +225,7 @@ export default function SettingsPage({ config, setConfig, updateConfig, onSave, 
             <option value="large">Large</option>
           </select>
         </div>
-        
+
         <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px', cursor: 'pointer', minWidth: 0 }}>
           <input
             type="checkbox"

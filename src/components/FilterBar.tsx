@@ -1,8 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, CSSProperties, ReactNode } from 'react';
 import Focusable from './Focusable';
 import { isBrowserPlaySupported } from '../browserPlaySupport';
+import type { Game, Library } from '../vite-env';
 
-function FilterChip({ label, active, onActivate, badge, style }) {
+interface FilterChipProps {
+  label: ReactNode;
+  active?: boolean;
+  onActivate: () => void;
+  badge?: number | null;
+  style?: CSSProperties;
+}
+
+function FilterChip({ label, active, onActivate, badge, style }: FilterChipProps) {
   return (
     <Focusable
       className={`filter-chip ${active ? 'active' : ''}`}
@@ -28,16 +37,28 @@ function FilterChip({ label, active, onActivate, badge, style }) {
   );
 }
 
-function Dropdown({ label, items, selected, onSelect, renderItem, activeColor = true, count }) {
+type DropdownItem = string | { value: any; label: string };
+
+interface DropdownProps {
+  label: string;
+  items: DropdownItem[];
+  selected: any;
+  onSelect: (value: any) => void;
+  renderItem?: (item: DropdownItem) => ReactNode;
+  activeColor?: boolean;
+  count?: number;
+}
+
+function Dropdown({ label, items, selected, onSelect, renderItem, activeColor = true, count }: DropdownProps) {
   const [open, setOpen] = useState(false);
-  const [rect, setRect] = useState(null);
-  const ref = useRef(null);
-  const chipRef = useRef(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const chipRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    const onDocClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     window.addEventListener('mousedown', onDocClick);
     return () => window.removeEventListener('mousedown', onDocClick);
@@ -131,6 +152,23 @@ function Dropdown({ label, items, selected, onSelect, renderItem, activeColor = 
   );
 }
 
+interface FilterBarProps {
+  games: Game[];
+  library: Library;
+  selectedPlatform: string | null;
+  onPlatformChange: (p: string | null) => void;
+  downloadedOnly: boolean;
+  onDownloadedChange: (v: boolean) => void;
+  showDownloaded?: boolean;
+  playInBrowserOnly: boolean;
+  onPlayInBrowserChange: (v: boolean) => void;
+  showPlayInBrowser?: boolean;
+  collections?: string[];
+  selectedCollection?: string | null;
+  onCollectionChange?: (c: string | null) => void;
+  onBackToCollectionsRoot?: () => void;
+}
+
 export default function FilterBar({
   games,
   library,
@@ -146,10 +184,10 @@ export default function FilterBar({
   selectedCollection,
   onCollectionChange,
   onBackToCollectionsRoot,
-}) {
+}: FilterBarProps) {
   const platforms = Object.keys(library?.platforms || {}).sort();
-  const platformItems = [{ value: null, label: 'All Platforms' }, ...platforms.map(p => ({ value: p, label: p }))];
-  const collectionItems = [{ value: null, label: 'All Collections' }, ...((collections || []).map(c => ({ value: c, label: c })))];
+  const platformItems: DropdownItem[] = [{ value: null, label: 'All Platforms' }, ...platforms.map(p => ({ value: p, label: p }))];
+  const collectionItems: DropdownItem[] = [{ value: null, label: 'All Collections' }, ...((collections || []).map(c => ({ value: c, label: c })))];
   const totalCount = games.length;
   const downloadedCount = games.filter(g => g.downloaded).length;
   const playInBrowserCount = games.filter(g => isBrowserPlaySupported(g.emuFolder)).length;

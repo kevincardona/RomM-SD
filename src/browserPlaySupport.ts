@@ -5,8 +5,7 @@
 // EmulatorJS does not support heavyweight 3D-era consoles (gamecube, wii,
 // 3ds, ps2, psp, saturn, dreamcast) reliably — RomM's web UI also refuses to
 // launch those via emulatorjs.
-const SUPPORTED = new Set([
-  // 8 / 16-bit Nintendo
+const SUPPORTED = new Set<string>([
   'nes', 'famicom', 'snes', 'supernintendo', 'super_nintendo',
   'n64', 'nintendo_64', 'nintendo-64',
   'gb', 'gameboy', 'game_boy', 'game-boy',
@@ -15,28 +14,23 @@ const SUPPORTED = new Set([
   'virtualboy', 'virtual_boy', 'virtual-boy',
   'nds', 'nintendods', 'nintendo_ds', 'nintendo-ds',
 
-  // Sega
   'genesis', 'megadrive', 'mega_drive', 'sega-genesis', 'sega_genesis', 'sega-genesis',
   'sms', 'mastersystem', 'master_system', 'master-system',
   'gamegear', 'game_gear', 'game-gear',
-  'saturn', 'sega-saturn', 'sega_saturn',  // limited but works
-  'dreamcast', 'dc', 'sega-dreamcast',  // works on some EmulatorJS builds
+  'saturn', 'sega-saturn', 'sega_saturn',
+  'dreamcast', 'dc', 'sega-dreamcast',
   'segacd', 'sega_cd', 'sega-cd', 'megacd', 'mega_cd', 'mega-cd',
   'sega32x', 'sega_32x', 'sega-32x',
   'sg1000',
 
-  // Sony
   'psx', 'ps1', 'playstation', 'playstation_1', 'playstation-1',
-  // psp/ps2 are flaky in emulatorjs; keep them off the supported list
 
-  // Atari
   '2600', 'atari2600', 'atari_2600', 'atari-2600',
   '5200', 'atari5200', 'atari_5200', 'atari-5200',
   '7800', 'atari7800', 'atari_7800', 'atari-7800',
   'lynx', 'atari-lynx', 'atari_lynx', 'atari-lynx',
   'jaguar', 'atari-jaguar', 'atari_jaguar', 'atari-jaguar',
 
-  // Other
   'neogeo', 'neo-geo', 'neo_geo',
   'ngp', 'ngpc', 'neogeopocket', 'neogeopocketcolor',
   'wonderswan', 'wonderswancolor', 'ws', 'wsc',
@@ -58,12 +52,11 @@ const SUPPORTED = new Set([
   'tic80',
   'wasm4',
 
-  // Doom / scummvm
   'doom', 'doom2',
   'scummvm',
 ]);
 
-const UNSUPPORTED = new Set([
+const UNSUPPORTED = new Set<string>([
   'gc', 'gamecube', 'ngc', 'nintendo-gamecube', 'nintendo_gamecube', 'nintendo-gamecube',
   'wii', 'nintendo-wii', 'nintendo_wii', 'nintendo-wii',
   'switch', 'nx', 'nintendo-switch', 'nintendo_switch', 'nintendo-switch',
@@ -72,17 +65,17 @@ const UNSUPPORTED = new Set([
   'wiiu', 'wii-u', 'nintendo-wiiu',
   'xbox', 'xbox360',
   'macos', 'windows', 'linux', 'pc',
-  'dreamcast', 'dc', // inconsistent; let user try but warn below
+  'dreamcast', 'dc',
 ]);
 
-export function isBrowserPlaySupported(emuFolder) {
+export function isBrowserPlaySupported(emuFolder: string | null | undefined): boolean {
   if (!emuFolder) return false;
   const key = String(emuFolder).toLowerCase();
   if (UNSUPPORTED.has(key)) return false;
   return SUPPORTED.has(key);
 }
 
-export function browserPlayUnsupportedReason(emuFolder) {
+export function browserPlayUnsupportedReason(emuFolder: string | null | undefined): string | null {
   if (!emuFolder) return 'Unknown platform';
   const key = String(emuFolder).toLowerCase();
   if (UNSUPPORTED.has(key)) {

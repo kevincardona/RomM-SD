@@ -1,7 +1,15 @@
 import React from 'react';
 import Focusable from './Focusable';
+import type { Config, Tab } from '../vite-env';
 
-const ALL_TABS = [
+interface TabDef {
+  id: Tab;
+  label: string;
+  experimental?: boolean;
+  requiresFlag?: keyof Config;
+}
+
+const ALL_TABS: TabDef[] = [
   { id: 'library_all', label: 'My Library' },
   { id: 'downloaded',  label: 'Ready to Play' },
   { id: 'collections', label: 'Collections' },
@@ -10,7 +18,13 @@ const ALL_TABS = [
   { id: 'settings',    label: 'Settings' },
 ];
 
-export default function Sidebar({ activeTab, setActiveTab, config }) {
+interface SidebarProps {
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
+  config?: Config;
+}
+
+export default function Sidebar({ activeTab, setActiveTab, config }: SidebarProps) {
   const tabs = ALL_TABS.filter(t => {
     if (!t.requiresFlag) return true;
     return !!config?.[t.requiresFlag];

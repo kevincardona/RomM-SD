@@ -1,19 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from './Modal';
 import { isBrowserPlaySupported, browserPlayUnsupportedReason } from '../browserPlaySupport';
+import type { Game, Config } from '../vite-env';
 
-export default function GameActionModal({ game, onClose, onDownload, onDelete, config }) {
-  const [fileSize, setFileSize] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
-  const [successMsg, setSuccessMsg] = useState(null);
-  const [autoSync, setAutoSync] = useState(!!config?.saveSyncEnabled);
-  const [streaming, setStreaming] = useState(false);
-  const wasDownloading = useRef(game.downloadProgress !== undefined && game.downloadProgress < 100);
-  const [justCompleted, setJustCompleted] = useState(false);
+interface GameActionModalProps {
+  game: Game;
+  onClose: () => void;
+  onDownload: (game: Game) => Promise<any>;
+  onDelete: (game: Game) => Promise<any>;
+  config?: Config;
+}
+
+export default function GameActionModal({ game, onClose, onDownload, onDelete, config }: GameActionModalProps) {
+  const [fileSize, setFileSize] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [autoSync, setAutoSync] = useState<boolean>(!!config?.saveSyncEnabled);
+  const [streaming, setStreaming] = useState<boolean>(false);
+  const wasDownloading = useRef<boolean>(game.downloadProgress !== undefined && game.downloadProgress < 100);
+  const [justCompleted, setJustCompleted] = useState<boolean>(false);
 
   useEffect(() => {
-    if (game.downloaded) {
-      window.electronAPI.checkFileExists(game.localPath).then(res => {
+    if (game.downloaded && game.localPath) {
+      window.electronAPI?.checkFileExists(game.localPath).then((res: any) => {
         if (res.exists) setFileSize((res.size / (1024 * 1024)).toFixed(2) + ' MB');
       });
     }
@@ -31,28 +40,28 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
     setErrorMsg(null);
     try {
       if (autoSync && config?.saveSyncEnabled && game.downloaded) {
-        const homeDir = await window.electronAPI.getHomeDir();
-        await window.electronAPI.snapshotGame({
+        const homeDir = await window.electronAPI!.getHomeDir();
+        await window.electronAPI!.snapshotGame({
           localPath: game.localPath, emuFolder: game.emuFolder,
           emudeckPath: config?.emudeckPath, homeDir,
         });
-        await window.electronAPI.startSaveWatcher({
+        await window.electronAPI!.startSaveWatcher({
           gameKey: `${game.emuFolder}::${game.filename}`,
           localPath: game.localPath, emuFolder: game.emuFolder,
           emudeckPath: config?.emudeckPath, homeDir,
         });
       }
-      const res = await window.electronAPI.launchGame({ localPath: game.localPath, emuFolder: game.emuFolder });
+      const res = await window.electronAPI!.launchGame({ localPath: game.localPath, emuFolder: game.emuFolder });
       if (res.success) onClose();
       else setErrorMsg(res.error);
-    } catch (err) { setErrorMsg(err.message); }
+    } catch (err: any) { setErrorMsg(err.message); }
   };
 
   const handlePlayInBrowser = async () => {
     setErrorMsg(null);
     setStreaming(true);
     try {
-      const res = await window.electronAPI.openBrowserPlay({
+      const res = await window.electronAPI!.openBrowserPlay({
         serverUrl: config?.url,
         romId: game.id,
         romName: game.title,
@@ -64,7 +73,7 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
       } else {
         onClose();
       }
-    } catch (err) {
+    } catch (err: any) {
       setErrorMsg(err.message);
       setStreaming(false);
     }
@@ -74,7 +83,7 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await window.electronAPI.addToSteam({
+      const res = await window.electronAPI!.addToSteam({
         appName: game.title,
         emuFolder: game.emuFolder,
         localPath: game.localPath,
@@ -82,7 +91,7 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
       });
       if (res.success) setSuccessMsg('Added to Steam! Restart Steam, then look for the game in your library. The cover art will appear after Steam rescans your shortcuts.');
       else setErrorMsg(res.error);
-    } catch (err) { setErrorMsg(err.message); }
+    } catch (err: any) { setErrorMsg(err.message); }
   };
 
   return (

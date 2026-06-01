@@ -9,7 +9,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-function isVisible(el) {
+function isVisible(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) return false;
   const style = window.getComputedStyle(el);
@@ -17,17 +17,17 @@ function isVisible(el) {
   return true;
 }
 
-export function useSpatialNavigation(disabled = false) {
+export function useSpatialNavigation(disabled: boolean = false) {
   useEffect(() => {
     if (disabled) return;
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       const keys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
       if (!keys.includes(e.key)) return;
 
-      const current = document.activeElement;
+      const current = document.activeElement as HTMLElement | null;
       const currentModal = current?.closest('.modal-overlay') || null;
 
-      const focusable = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR))
+      const focusable = (Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)))
         .filter(el => isVisible(el))
         .filter(el => {
           if (currentModal) {
@@ -45,7 +45,7 @@ export function useSpatialNavigation(disabled = false) {
       }
 
       const rect1 = current.getBoundingClientRect();
-      let bestMatch = null;
+      let bestMatch: HTMLElement | null = null;
       let minDistance = Infinity;
 
       focusable.forEach((node) => {
