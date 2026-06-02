@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 
 import { initControllers } from './electron/controllers.js';
 import { launchGame, runCloudSync, getEmulatorCommands, resolveInstallPaths, biosBasePath } from './electron/launchers.js';
-import { addToSteam, addSelfToSteam } from './electron/steamShortcuts.js';
+import { addToSteam, addSelfToSteam, addBrowserGameToSteam, removeFromSteam } from './electron/steamShortcuts.js';
 import { downloadRom } from './electron/downloads.js';
 import { makeLogger, readConfig, writeConfig, getLogPath, getConfigPath } from './electron/config.js';
 import {
@@ -27,13 +27,38 @@ import {
   stopSaveWatcher,
   stopAllWatchers,
 } from './electron/saveManager.js';
+import {
+  getUninstallSummary,
+  wipeGames,
+  wipeBios,
+  wipeSaves,
+  wipeConfig,
+  wipeLibraryCache,
+  readLibraryCache,
+  writeLibraryCache,
+  openAppImageLocation,
+  getAppImagePath,
+} from './electron/uninstall.js';
+import { checkPrerequisites } from './electron/prerequisites.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const logger = makeLogger();
 
+// Parse startup deep link: --play-browser-rom <romId> or --play-browser-rom=<romId>
+const pendingDeepLinkRomId = (() => {
+  const eqArg = process.argv.find(a => a.startsWith('--play-browser-rom='));
+  if (eqArg) return eqArg.split('=')[1];
+  const idx = process.argv.indexOf('--play-browser-rom');
+  return idx !== -1 && process.argv[idx + 1] ? process.argv[idx + 1] : null;
+})();
+
 let sdl = null;
 try { sdl = require('@kmamal/sdl'); }
 catch (e) { logger.error(`SDL not available, controller support disabled: ${e.message}`); }
+
+let autoUpdater = null;
+try { autoUpdater = require('electron-updater').autoUpdater; }
+catch (e) { logger.error(`electron-updater unavailable: ${e.message}`); }
 
 let controllers = null;
 
@@ -57,6 +82,7 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   controllers = initControllers(sdl, logger);
+  initAutoUpdater();
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
@@ -146,6 +172,8 @@ ipcMain.handle('stop-save-watcher', async (_e, payload) => {
 
 ipcMain.handle('add-to-steam', (_e, payload) => addToSteam(payload, { ...logger, resolveCommands: getEmulatorCommands }));
 ipcMain.handle('add-self-to-steam', () => addSelfToSteam(logger));
+ipcMain.handle('add-browser-game-to-steam', (_e, payload) => addBrowserGameToSteam(payload, logger));
+ipcMain.handle('get-pending-deep-link', () => pendingDeepLinkRomId ? { type: 'browser-play', romId: pendingDeepLinkRomId } : null);
 
 ipcMain.handle('controller-rumble', (_e, opts) => { controllers?.rumble(opts); });
 
@@ -199,13 +227,18 @@ ipcMain.handle('open-browser-play', async (_e, payload) => {
 
   try {
     const auth = await rommSessionLogin(baseUrl, token);
-    const { hostname } = new URL(baseUrl);
     const ses = session.fromPartition(BROWSER_PLAY_PARTITION);
-    // SameSite is intentionally unset: the window starts at about:blank, and
-    // samesite=strict cookies would be dropped on the first cross-site nav.
-    // The server's own response to the page load will set a CSRF cookie;
-    // we only need to seed the session cookie here.
-    await ses.cookies.set({ url: baseUrl, name: 'romm_session', value: auth.sessionId, domain: hostname, path: '/', httpOnly: true });
+    // Set the session cookie scoped to the URL — no explicit domain so Electron
+    // derives it correctly (explicit domain breaks IP-address servers).
+    // expirationDate keeps the session alive across opens so save states persist.
+    await ses.cookies.set({
+      url: baseUrl,
+      name: 'romm_session',
+      value: auth.sessionId,
+      path: '/',
+      httpOnly: true,
+      expirationDate: Math.floor(Date.now() / 1000) + 86400,
+    });
 
     browserPlayWindow = new BrowserWindow({
       width: 1280,
@@ -245,4 +278,158 @@ app.on('before-quit', () => {
 
 ipcMain.handle('show-keyboard', async () => {
   try { await execAsync('xdg-open steam://open/keyboard'); } catch (_) {}
+});
+
+function initAutoUpdater() {
+  if (!autoUpdater || !app.isPackaged) return;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = {
+    info: (m) => logger.info(`[updater] ${m}`),
+    warn: (m) => logger.info(`[updater] ${m}`),
+    error: (m) => logger.error(`[updater] ${m}`),
+    debug: () => {},
+    log: () => {},
+  };
+  const forward = (channel, payload) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(channel, payload);
+    }
+  };
+  autoUpdater.on('checking-for-update', () => forward('update-checking', null));
+  autoUpdater.on('update-available', (info) => forward('update-available', {
+    version: info.version,
+    releaseName: info.releaseName || null,
+    releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : null,
+    releaseDate: info.releaseDate,
+  }));
+  autoUpdater.on('update-not-available', (info) => forward('update-not-available', { version: info.version }));
+  autoUpdater.on('download-progress', (p) => forward('update-progress', {
+    percent: p.percent,
+    transferred: p.transferred,
+    total: p.total,
+    bytesPerSecond: p.bytesPerSecond,
+  }));
+  autoUpdater.on('update-downloaded', (info) => forward('update-downloaded', { version: info.version }));
+  autoUpdater.on('error', (err) => forward('update-error', { message: err?.message || String(err) }));
+}
+
+ipcMain.handle('check-for-updates', async () => {
+  if (!autoUpdater || !app.isPackaged) {
+    return { supported: false, currentVersion: require('./package.json').version, reason: !app.isPackaged ? 'dev' : 'updater-unavailable' };
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return {
+      supported: true,
+      currentVersion: autoUpdater.currentVersion?.version || require('./package.json').version,
+      updateInfo: result?.updateInfo ? {
+        version: result.updateInfo.version,
+        releaseName: result.updateInfo.releaseName || null,
+        releaseNotes: typeof result.updateInfo.releaseNotes === 'string' ? result.updateInfo.releaseNotes : null,
+        releaseDate: result.updateInfo.releaseDate,
+      } : null,
+    };
+  } catch (e) {
+    return { supported: true, error: e.message, currentVersion: require('./package.json').version };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  if (!autoUpdater) return { success: false, error: 'Updater unavailable' };
+  try { await autoUpdater.downloadUpdate(); return { success: true }; }
+  catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('install-update', () => {
+  if (!autoUpdater) return { success: false, error: 'Updater unavailable' };
+  autoUpdater.quitAndInstall();
+  return { success: true };
+});
+
+ipcMain.handle('get-uninstall-summary', async (_e, config) => {
+  return await getUninstallSummary(config || {});
+});
+
+ipcMain.handle('uninstall-wipe-games', async (_e, config) => wipeGames(config || {}));
+ipcMain.handle('uninstall-wipe-bios', async (_e, config) => wipeBios(config || {}));
+ipcMain.handle('uninstall-wipe-saves', () => wipeSaves());
+ipcMain.handle('uninstall-wipe-config', () => wipeConfig());
+ipcMain.handle('uninstall-wipe-library-cache', () => wipeLibraryCache());
+ipcMain.handle('uninstall-remove-from-steam', async () => removeFromSteam('ROMM-SD'));
+ipcMain.handle('open-appimage-location', () => openAppImageLocation());
+ipcMain.handle('get-appimage-path', () => getAppImagePath());
+
+ipcMain.handle('get-library-cache', () => readLibraryCache());
+ipcMain.handle('save-library-cache', async (_e, library) => writeLibraryCache(library));
+ipcMain.handle('clear-library-cache', () => wipeLibraryCache());
+
+ipcMain.handle('check-prerequisites', async () => {
+  try { return { success: true, ...(await checkPrerequisites()) }; }
+  catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('check-ryujinx-firmware', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const HOME = os.homedir();
+  const candidates = [
+    path.join(HOME, '.config', 'Ryujinx', 'bis', 'system', 'Contents', 'registered'),
+    path.join(HOME, '.var', 'app', 'org.ryujinx.Ryujinx', 'config', 'Ryujinx', 'bis', 'system', 'Contents', 'registered'),
+  ];
+  for (const p of candidates) {
+    try {
+      const entries = await readdir(p);
+      if (entries.length > 0) return { installed: true };
+    } catch {}
+  }
+  return { installed: false };
+});
+
+ipcMain.handle('install-switch-firmware', async (_e, firmwarePath) => {
+  const HOME = os.homedir();
+  const launcherPath = path.join(HOME, 'Emulation', 'tools', 'launchers', 'ryujinx.sh');
+
+  // Try Flatpak Ryujinx (most common on Linux/Steam Deck via EmuDeck)
+  try {
+    await execAsync('which flatpak');
+    exec(`flatpak run org.ryujinx.Ryujinx --install-firmware "${firmwarePath}"`);
+    return { success: true, message: 'Ryujinx is opening to install the firmware. When prompted, confirm the install, then close Ryujinx.' };
+  } catch {
+    logger.info('install-switch-firmware: flatpak not available');
+  }
+
+  // Try EmuDeck launcher script
+  try {
+    await execAsync(`[ -x "${launcherPath}" ]`);
+    exec(`"${launcherPath}" --install-firmware "${firmwarePath}"`);
+    return { success: true, message: 'Ryujinx is opening to install the firmware. When prompted, confirm the install, then close Ryujinx.' };
+  } catch {
+    logger.info('install-switch-firmware: EmuDeck launcher not available or not executable');
+  }
+
+  return {
+    success: false,
+    error: `Ryujinx could not be launched automatically.\n\nTo install manually:\n1. Open Ryujinx\n2. Tools → Install Firmware\n3. Select the file at: ${firmwarePath}`,
+  };
+});
+
+ipcMain.handle('fetch-image', async (_e, url, token) => {
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = token;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    return Buffer.from(buf).toString('base64');
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return { success: false, error: 'Only http(s) URLs are allowed.' };
+  }
+  try { await shell.openExternal(url); return { success: true }; }
+  catch (e) { return { success: false, error: e.message }; }
 });

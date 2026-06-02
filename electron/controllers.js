@@ -19,19 +19,19 @@ function getMainWindow() {
   return BrowserWindow.getAllWindows()[0] ?? null;
 }
 
-// Send to all live windows. This way the controller still drives the main
-// RomM-SD window even when a child window (e.g. the browser-play stream) is
-// focused. The main window was previously gated on `win.isFocused()`, which
-// caused the controller to silently stop working the moment a child window
-// stole focus — extremely confusing on a TV/Steam Deck where there is no
-// visible "active" highlight.
 function broadcast(channel, payload) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win && !win.isDestroyed()) {
-      try { win.webContents.send(channel, payload); } catch {}
-    }
+  const wins = BrowserWindow.getAllWindows();
+  const main = wins[0];
+  if (!main || main.isDestroyed()) return;
+  // If a non-main window (e.g. browser-play) is focused, don't forward
+  // controller events to the main window — the focused window's emulatorjs
+  // reads the Gamepad API directly.
+  for (const w of wins) {
+    if (w !== main && !w.isDestroyed() && w.isFocused()) return;
   }
+  try { main.webContents.send(channel, payload); } catch {}
 }
+
 
 export function initControllers(sdl, { logInfo, logError }) {
   if (!sdl) return;

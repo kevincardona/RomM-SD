@@ -111,7 +111,14 @@ export async function fetchLibrary(url: string, token: string): Promise<Library>
     if (!library.platforms[platform]) library.platforms[platform] = [];
 
     const coverUrlRaw = rom.path_cover_large || rom.path_cover_small || rom.url_cover;
-    const coverUrl = coverUrlRaw ? `${baseUrl}${coverUrlRaw}` : null;
+    let coverUrl: string | null = null;
+    if (coverUrlRaw) {
+      if (coverUrlRaw.startsWith('http')) {
+        coverUrl = coverUrlRaw;
+      } else {
+        coverUrl = `${baseUrl}${coverUrlRaw.startsWith('/') ? '' : '/'}${coverUrlRaw}`;
+      }
+    }
 
     const emuFolder = platformFolderMap[platform.toLowerCase()] || platform.toLowerCase();
 

@@ -18,6 +18,7 @@ interface ResolvedFirmware extends FirmwareEntry {
   installPaths?: InstallPath[];
   localPath?: string;
   isSwitchKey?: boolean;
+  isSwitchFirmware?: boolean;
   downloaded?: boolean;
   downloadUrl?: string;
 }
@@ -62,14 +63,17 @@ function platformIcon(fw: ResolvedFirmware | FirmwareEntry, platformMap: Platfor
 
 interface FirmwarePageProps {
   config: Config;
+  embedded?: boolean;
 }
 
-export default function FirmwarePage({ config }: FirmwarePageProps) {
+export default function FirmwarePage({ config, embedded }: FirmwarePageProps) {
   const [firmware, setFirmware] = useState<ResolvedFirmware[]>([]);
   const [platformMap, setPlatformMap] = useState<PlatformIndex>({ byId: {}, bySlug: {}, byFsSlug: {} });
   const [loading, setLoading] = useState(true);
   const [biosPath, setBiosPath] = useState('');
   const [progress, setProgress] = useState<Record<string, number>>({});
+  const [installingId, setInstallingId] = useState<string | number | null>(null);
+  const [ryujinxFirmwareInstalled, setRyujinxFirmwareInstalled] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,13 +88,16 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
         if (cancelled) return;
         setBiosPath(path);
 
-        const [data, platforms] = await Promise.all([
+        const [data, platforms, ryujinxCheck] = await Promise.all([
           fetchFirmware(config.url, config.token),
           fetchPlatforms(config.url, config.token),
+          window.electronAPI!.checkRyujinxFirmware().catch(() => ({ installed: false })),
         ]);
+        if (!cancelled) setRyujinxFirmwareInstalled(ryujinxCheck.installed);
         if (cancelled) return;
         setPlatformMap(platforms);
 
+        const mergedItems: ResolvedFirmware[] = [];
         for (const fw of data) {
           const platformObj = (fw.platform && typeof fw.platform === 'object') ? fw.platform : null;
           const slugFromObject = platformObj?.slug;
@@ -115,38 +122,44 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
             homeDir: hd,
           }).catch(() => null);
 
-          const localPath = resolved?.success && resolved.paths?.length
-            ? resolved.paths[0].path
-            : (fsSlugResolved ? `${path}/${fsSlugResolved}/${fileName}` : `${path}/${fileName}`);
+          const installPaths: InstallPath[] = resolved?.success && resolved.paths?.length
+            ? resolved.paths
+            : [{ emulator: 'EmuDeck BIOS root', path: fsSlugResolved ? `${path}/${fsSlugResolved}/${fileName}` : `${path}/${fileName}` }];
 
+          const localPath = installPaths[0].path;
           const isSwitchKey = resolved?.success && resolved.paths?.some((p: InstallPath) => p.kind === 'switch-key');
+          const isSwitchFirmware = resolved?.success && resolved.paths?.some((p: InstallPath) => p.kind === 'switch-firmware');
 
           const merged: ResolvedFirmware = {
             ...fw,
             subFolder: fsSlugResolved || slugResolved,
-            platformSlug: slugResolved,
+            platformSlug: slugResolved || null,
             platformFsSlug: fsSlugResolved,
             platformIdResolved: idResolved,
             platformLabel: platformFromMap?.display
               || (platformObj?.display_name || platformObj?.name)
               || fw.platform_display_name
               || (fw as any).platform_name
-              || (fsSlugResolved || null),
-            installPaths: resolved?.success && resolved.paths?.length ? resolved.paths : [{ emulator: 'EmuDeck BIOS root', path: localPath }],
+              || fsSlugResolved
+              || null,
+            installPaths,
             localPath,
             isSwitchKey: !!isSwitchKey,
+            isSwitchFirmware: !!isSwitchFirmware,
+            downloadUrl: (fw as any).download_url
+              ? `${config.url.replace(/\/$/, '')}${(fw as any).download_url}`
+              : `${config.url.replace(/\/$/, '')}/api/firmware/${fw.id}/content/${encodeURIComponent(fileName)}`,
           };
 
-          const fileCheck = await window.electronAPI!.checkFileExists(localPath);
-          merged.downloaded = fileCheck.exists;
-          merged.downloadUrl = (fw as any).download_url
-            ? `${config.url.replace(/\/$/, '')}${(fw as any).download_url}`
-            : `${config.url.replace(/\/$/, '')}/api/firmware/${fw.id}/content/${encodeURIComponent(fileName)}`;
+          // Mark downloaded if ANY install path already has the file
+          const checks = await Promise.all(installPaths.map(p => window.electronAPI!.checkFileExists(p.path)));
+          merged.downloaded = checks.some(r => r.exists);
 
           if (cancelled) return;
+          mergedItems.push(merged);
         }
         if (cancelled) return;
-        setFirmware(data as ResolvedFirmware[]);
+        setFirmware(mergedItems);
       } catch (err) { console.error("Failed to load firmware", err); }
       if (!cancelled) setLoading(false);
     }
@@ -164,28 +177,26 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
   const handleDownload = async (fw: ResolvedFirmware) => {
     setProgress(prev => ({ ...prev, [String(fw.id)]: 0 }));
     try {
-      const targets = fw.installPaths && fw.installPaths.length > 1
-        ? fw.installPaths
-        : [fw];
-      let lastResult: any = { success: false };
+      const targets = fw.installPaths && fw.installPaths.length > 0 ? fw.installPaths : [{ path: fw.localPath! }];
+      let anySuccess = false;
+      let lastError = '';
       for (const t of targets) {
-        const path = (t as any).localPath || (t as any).path;
+        const destPath = (t as any).path || fw.localPath!;
         const res = await window.electronAPI!.downloadRom({
-          id: `${fw.id}::${path}`, url: fw.downloadUrl!, destinationPath: path, token: config.token,
+          id: `${fw.id}::${destPath}`, url: fw.downloadUrl!, destinationPath: destPath, token: config.token,
         });
-        lastResult = res;
-        if (!res.success) break;
+        if (res.success) anySuccess = true;
+        else lastError = res.error || 'Unknown error';
       }
-      if (lastResult.success) {
-        setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
+      setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
+      if (anySuccess) {
         setFirmware(prev => prev.map(f => f.id === fw.id ? { ...f, downloaded: true } : f));
       } else {
-        setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
-        alert("Download failed: " + lastResult.error);
+        alert('Download failed: ' + lastError);
       }
     } catch (e: any) {
       setProgress(prev => { const n = { ...prev }; delete n[String(fw.id)]; return n; });
-      alert("Error: " + e.message);
+      alert('Error: ' + e.message);
     }
   };
 
@@ -197,6 +208,22 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
       }
       setFirmware(prev => prev.map(f => f.id === fw.id ? { ...f, downloaded: false } : f));
     } catch (e: any) { alert("Delete failed: " + e.message); }
+  };
+
+  const handleInstallToRyujinx = async (fw: ResolvedFirmware) => {
+    setInstallingId(fw.id);
+    try {
+      const res = await window.electronAPI!.installSwitchFirmware(fw.localPath!);
+      setInstallingId(null);
+      if (res.success) {
+        alert(`${res.message || 'Ryujinx is opening.'}\n\nClick Refresh on this page after closing Ryujinx to verify the firmware is installed.`);
+      } else {
+        alert(res.error || `To install manually:\n1. Open Ryujinx\n2. Tools → Install Firmware\n3. Select: ${fw.localPath}`);
+      }
+    } catch (e: any) {
+      setInstallingId(null);
+      alert(`Error: ${e.message}\n\nTo install manually:\n1. Open Ryujinx\n2. Tools → Install Firmware\n3. Select: ${fw.localPath}`);
+    }
   };
 
   const grouped = useMemo(() => {
@@ -217,10 +244,12 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
 
   return (
     <>
-      <div className="topbar" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <h2 style={{ margin: 0, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>System BIOS & Firmware</h2>
-        <button className="btn" tabIndex={0} onClick={refresh} style={{ padding: '8px 16px', fontSize: '0.85rem', flex: '0 0 auto' }}>↻ Refresh</button>
-      </div>
+      {!embedded && (
+        <div className="topbar" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <h2 style={{ margin: 0, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>System BIOS & Firmware</h2>
+          <button className="btn" tabIndex={0} onClick={refresh} style={{ padding: '8px 16px', fontSize: '0.85rem', flex: '0 0 auto' }}>↻ Refresh</button>
+        </div>
+      )}
       <div className="content-area">
         {loading ? (
           <div className="loading-container" style={{ position: 'static', background: 'none', height: '60vh' }}>
@@ -312,7 +341,12 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
                           </div>
                           {fw.isSwitchKey && (
                             <div style={{ fontSize: '0.7rem', color: '#00e5ff', fontStyle: 'italic' }}>
-                              ↳ Switch decryption keys — written to Yuzu & Ryujinx config
+                              ↳ Decryption keys — written directly to Yuzu &amp; Ryujinx config
+                            </div>
+                          )}
+                          {fw.isSwitchFirmware && (
+                            <div style={{ fontSize: '0.7rem', color: '#ff9800', fontStyle: 'italic' }}>
+                              ↳ System firmware — staged locally, then install via Ryujinx
                             </div>
                           )}
                           {downloading && (
@@ -327,19 +361,49 @@ export default function FirmwarePage({ config }: FirmwarePageProps) {
                             </div>
                           )}
                           {!downloading && (
-                            <div style={{ marginTop: 'auto', display: 'flex', gap: '8px' }}>
+                            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {fw.downloaded ? (
-                                <>
-                                  <div style={{ color: '#4caf50', fontSize: '0.85rem', flex: 1, alignSelf: 'center' }}>Installed ✓</div>
-                                  <button
-                                    className="btn"
-                                    tabIndex={0}
-                                    onClick={() => handleDelete(fw)}
-                                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                  >
-                                    Remove
-                                  </button>
-                                </>
+                                fw.isSwitchFirmware ? (
+                                  <>
+                                    <div style={{ fontSize: '0.8rem', color: ryujinxFirmwareInstalled ? '#4caf50' : '#ff9800' }}>
+                                      {ryujinxFirmwareInstalled ? 'Installed in Ryujinx ✓' : 'Staged ✓ — install into Ryujinx'}
+                                    </div>
+                                    {!ryujinxFirmwareInstalled && (
+                                      <button
+                                        data-primary
+                                        className="btn"
+                                        tabIndex={0}
+                                        disabled={installingId === fw.id}
+                                        onClick={() => handleInstallToRyujinx(fw)}
+                                        style={{ width: '100%', background: 'rgba(255,152,0,0.15)', borderColor: 'rgba(255,152,0,0.5)', color: '#ff9800' }}
+                                      >
+                                        {installingId === fw.id ? 'Launching Ryujinx…' : '⬆ Install to Ryujinx'}
+                                      </button>
+                                    )}
+                                    <button
+                                      className="btn"
+                                      tabIndex={0}
+                                      onClick={() => handleDelete(fw)}
+                                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                    >
+                                      Remove Staged File
+                                    </button>
+                                  </>
+                                ) : (
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ color: '#4caf50', fontSize: '0.85rem', flex: 1, alignSelf: 'center' }}>
+                                      {fw.isSwitchKey ? 'Keys installed ✓' : 'Installed ✓'}
+                                    </div>
+                                    <button
+                                      className="btn"
+                                      tabIndex={0}
+                                      onClick={() => handleDelete(fw)}
+                                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                )
                               ) : (
                                 <button
                                   data-primary

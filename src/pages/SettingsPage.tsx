@@ -1,5 +1,5 @@
-import React, { useState, useRef, useId, ChangeEvent, FocusEvent, KeyboardEvent } from 'react';
-import type { Config } from '../vite-env';
+import React, { useState, useRef, useId, useEffect, ChangeEvent, KeyboardEvent } from 'react';
+import type { Config, UninstallSummary } from '../vite-env';
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -66,7 +66,7 @@ function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit
             onChange={onChange}
             onFocus={() => setFocused(true)}
             onBlur={() => { setFocused(false); onCommit && onCommit(); }}
-            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
+            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
             style={{
               padding: '10px 16px',
               background: 'rgba(255,255,255,0.04)',
@@ -99,7 +99,7 @@ function EditableSetting({ label, hint, value, onChange, type = 'text', onCommit
           onChange={onChange}
           onFocus={() => setFocused(true)}
           onBlur={() => { setFocused(false); onCommit && onCommit(); }}
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
+          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); } }}
           style={{
             flex: 1,
             minWidth: 0,
@@ -124,6 +124,201 @@ interface DiagnosticResult {
   exists: boolean;
 }
 
+interface UninstallSectionProps {
+  config: Config;
+  onConfigReset: () => void;
+}
+
+function formatBytes(n: number): string {
+  if (!n) return '0 B';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function UninstallSection({ config, onConfigReset }: UninstallSectionProps) {
+  const [open, setOpen] = useState(false);
+  const [summary, setSummary] = useState<UninstallSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [wipeGames, setWipeGames] = useState(true);
+  const [wipeBios, setWipeBios] = useState(true);
+  const [wipeSaves, setWipeSaves] = useState(true);
+  const [wipeCache, setWipeCache] = useState(true);
+  const [wipeConfig, setWipeConfig] = useState(false);
+  const [removeSteam, setRemoveSteam] = useState(true);
+  const [working, setWorking] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    setDone(null);
+    window.electronAPI!.getUninstallSummary(config).then(s => {
+      setSummary(s);
+      setLoading(false);
+    });
+  }, [open, config]);
+
+  const handleOpenAppImage = async () => {
+    const res = await window.electronAPI!.openAppImageLocation();
+    if (res.success && res.path) {
+      setDone(`Opened ${res.path} in your file manager.`);
+    } else if (res.error) {
+      setDone(`Couldn't open file manager: ${res.error}`);
+    }
+  };
+
+  const handleConfirm = async () => {
+    setWorking(true);
+    setDone(null);
+    const tasks: string[] = [];
+    if (wipeGames) { await window.electronAPI!.uninstallWipeGames(config); tasks.push('Removed downloaded games'); }
+    if (wipeBios) { await window.electronAPI!.uninstallWipeBios(config); tasks.push('Removed BIOS files'); }
+    if (wipeSaves) { await window.electronAPI!.uninstallWipeSaves(); tasks.push('Removed save cache'); }
+    if (wipeCache) { await window.electronAPI!.uninstallWipeLibraryCache(); tasks.push('Removed library cache'); }
+    if (removeSteam) { await window.electronAPI!.uninstallRemoveFromSteam(); tasks.push('Removed Steam shortcut'); }
+    if (wipeConfig) {
+      await window.electronAPI!.uninstallWipeConfig();
+      tasks.push('Removed saved config');
+      onConfigReset();
+    }
+    setWorking(false);
+    setDone(tasks.join(' · ') || 'No changes selected.');
+  };
+
+  return (
+    <>
+      <button
+        className="btn"
+        tabIndex={0}
+        onClick={() => { setOpen(true); setDone(null); }}
+        style={{ background: 'rgba(255, 68, 68, 0.12)', color: '#ff6b6b', borderColor: 'rgba(255, 68, 68, 0.4)' }}
+      >
+        Uninstall ROMM-SD…
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => !working && setOpen(false)}>
+          <div className="modal" style={{ maxWidth: '560px', width: '90%' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0 }}>Uninstall ROMM-SD</h2>
+            {loading || !summary ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>Scanning…</div>
+            ) : (
+              <>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                  Choose what to remove. The app binary itself is an AppImage — you'll need to delete that file yourself
+                  to fully uninstall.
+                </p>
+
+                {summary.appImagePath && (
+                  <div style={{ padding: '10px 12px', background: 'rgba(0, 229, 255, 0.06)', border: '1px solid rgba(0, 229, 255, 0.25)', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '14px' }}>
+                    <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>AppImage location:</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.78rem', wordBreak: 'break-all', marginBottom: '8px' }}>{summary.appImagePath}</div>
+                    <button className="btn" tabIndex={0} onClick={handleOpenAppImage} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Open in file manager</button>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                  <UninstallCheckbox
+                    checked={wipeGames}
+                    onChange={setWipeGames}
+                    label="Downloaded games"
+                    sub={`${summary.roms.fileCount} files · ${formatBytes(summary.roms.totalBytes)}`}
+                    subPath={summary.romsPath}
+                  />
+                  <UninstallCheckbox
+                    checked={wipeBios}
+                    onChange={setWipeBios}
+                    label="BIOS / firmware files"
+                    sub={`${summary.bios.fileCount} files · ${formatBytes(summary.bios.totalBytes)}`}
+                    subPath={summary.biosPath}
+                  />
+                  <UninstallCheckbox
+                    checked={wipeSaves}
+                    onChange={setWipeSaves}
+                    label="Save sync cache"
+                    sub={`${summary.saves.fileCount} files · ${formatBytes(summary.saves.totalBytes)}`}
+                    subPath={summary.savesDir}
+                  />
+                  <UninstallCheckbox
+                    checked={wipeCache}
+                    onChange={setWipeCache}
+                    label="Library cache"
+                    sub={summary.libraryCacheExists ? 'Caches which games are downloaded' : 'Not present'}
+                    subPath={summary.libraryCachePath}
+                  />
+                  <UninstallCheckbox
+                    checked={wipeConfig}
+                    onChange={setWipeConfig}
+                    label="Saved config (server URL, credentials)"
+                    sub={summary.configExists ? 'You will be signed out' : 'Not present'}
+                    subPath={summary.configPath}
+                  />
+                  <UninstallCheckbox
+                    checked={removeSteam}
+                    onChange={setRemoveSteam}
+                    label="Remove ROMM-SD from Steam"
+                    sub="Deletes the non-Steam game shortcut"
+                  />
+                </div>
+
+                {done && (
+                  <div style={{ padding: '10px 12px', background: 'rgba(76, 175, 80, 0.15)', color: '#4caf50', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '12px' }}>
+                    {done}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button className="btn" tabIndex={0} onClick={() => setOpen(false)} disabled={working}>
+                    {done ? 'Close' : 'Cancel'}
+                  </button>
+                  {!done && (
+                    <button
+                      className="btn"
+                      tabIndex={0}
+                      onClick={handleConfirm}
+                      disabled={working || (!wipeGames && !wipeBios && !wipeSaves && !wipeCache && !wipeConfig && !removeSteam)}
+                      style={{ background: '#d32f2f', color: 'white', borderColor: '#d32f2f', opacity: working ? 0.6 : 1 }}
+                    >
+                      {working ? 'Removing…' : 'Confirm'}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function UninstallCheckbox({ checked, onChange, label, sub, subPath }: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  sub: string;
+  subPath?: string;
+}) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', cursor: 'pointer', minWidth: 0 }}>
+      <input
+        type="checkbox"
+        tabIndex={0}
+        checked={checked}
+        onChange={e => onChange(e.target.checked)}
+        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
+        style={{ width: '16px', height: '16px', margin: '2px 0 0 0', flex: '0 0 auto' }}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{sub}</div>
+        {subPath && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{subPath}</div>}
+      </div>
+    </label>
+  );
+}
+
 interface SettingsPageProps {
   config: Config;
   setConfig: (config: Config) => void;
@@ -131,13 +326,24 @@ interface SettingsPageProps {
   onSave: () => Promise<any> | void;
   error?: string;
   onRerunWizard: () => void;
+  onRescanLibrary: () => Promise<any>;
+  onConfigReset: () => void;
 }
 
-export default function SettingsPage({ config, setConfig, updateConfig, onSave, error, onRerunWizard }: SettingsPageProps) {
+export default function SettingsPage({ config, setConfig, updateConfig, onSave, error, onRerunWizard, onRescanLibrary, onConfigReset }: SettingsPageProps) {
   const [logs, setLogs] = useState<string>('');
   const [showLogs, setShowLogs] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult[] | null>(null);
   const [selfSteamMsg, setSelfSteamMsg] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
+  const [rescanMsg, setRescanMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.electronAPI?.getVersion?.().then(v => setAppVersion(v || ''));
+  }, []);
 
   const handleAddSelfToSteam = async () => {
     setSelfSteamMsg(null);
@@ -177,6 +383,46 @@ export default function SettingsPage({ config, setConfig, updateConfig, onSave, 
       results.push({ ...check, exists: res.exists });
     }
     setDiagnostics(results);
+  };
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdate(true);
+    setUpdateStatus(null);
+    try {
+      const res = await window.electronAPI!.checkForUpdates();
+      if (!res.supported) {
+        setUpdateStatus(res.reason === 'dev'
+          ? 'Update checks are disabled in development mode.'
+          : 'Updater is not available.');
+        return;
+      }
+      if (res.error) { setUpdateStatus(`Error: ${res.error}`); return; }
+      if (res.updateInfo) {
+        setUpdateStatus(`Update available: v${res.updateInfo.version}. See the banner above.`);
+      } else {
+        setUpdateStatus(`You're on the latest version (v${res.currentVersion}).`);
+      }
+    } catch (e: any) {
+      setUpdateStatus(`Error: ${e.message}`);
+    }
+    setCheckingUpdate(false);
+  };
+
+  const handleRescan = async () => {
+    setRescanning(true);
+    setRescanMsg(null);
+    try {
+      const res = await onRescanLibrary();
+      if (res === null) {
+        setRescanMsg('No cached library to rescan. Connect to your server first.');
+      } else {
+        const installed = (window as any).library?.all?.filter((g: any) => g.downloaded).length ?? 0;
+        setRescanMsg(`Rescanned. Found ${installed} game${installed === 1 ? '' : 's'} installed on disk.`);
+      }
+    } catch (e: any) {
+      setRescanMsg(`Rescan failed: ${e.message}`);
+    }
+    setRescanning(false);
   };
 
   return (
@@ -283,6 +529,40 @@ export default function SettingsPage({ config, setConfig, updateConfig, onSave, 
           <button className="btn" tabIndex={0} onClick={onRerunWizard}>
             Re-run Setup Wizard
           </button>
+        </div>
+
+        <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--panel-border)' }}>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Updates &amp; Maintenance</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+            ROMM-SD v{appVersion || '…'} — Updates check the GitHub releases feed. Rescanning re-checks which games
+            are on disk without hitting the network.
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button className="btn" tabIndex={0} onClick={handleCheckUpdates} disabled={checkingUpdate}>
+              {checkingUpdate ? 'Checking…' : 'Check for updates'}
+            </button>
+            <button className="btn" tabIndex={0} onClick={handleRescan} disabled={rescanning}>
+              {rescanning ? 'Rescanning…' : 'Rescan disk'}
+            </button>
+          </div>
+          {updateStatus && (
+            <div style={{ marginTop: '10px', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', background: updateStatus.startsWith('Update available') ? 'rgba(0, 229, 255, 0.12)' : 'rgba(255,255,255,0.05)', color: updateStatus.startsWith('Update available') ? 'var(--accent-color)' : 'var(--text-muted)' }}>
+              {updateStatus}
+            </div>
+          )}
+          {rescanMsg && (
+            <div style={{ marginTop: '10px', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' }}>
+              {rescanMsg}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--panel-border)' }}>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>Uninstall</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+            Remove downloaded games, BIOS, save cache, and the Steam shortcut. The AppImage itself must be deleted manually.
+          </div>
+          <UninstallSection config={config} onConfigReset={onConfigReset} />
         </div>
 
         <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--panel-border)' }}>

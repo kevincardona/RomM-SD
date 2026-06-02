@@ -13,8 +13,8 @@ const ALL_TABS: TabDef[] = [
   { id: 'library_all', label: 'My Library' },
   { id: 'downloaded',  label: 'Ready to Play' },
   { id: 'collections', label: 'Collections' },
+  { id: 'emulators',   label: 'Emulators' },
   { id: 'savesync',    label: 'Cloud Saves', experimental: true, requiresFlag: 'saveSyncEnabled' },
-  { id: 'firmware',    label: 'BIOS / Firmware' },
   { id: 'settings',    label: 'Settings' },
 ];
 

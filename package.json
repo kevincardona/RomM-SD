@@ -1,7 +1,8 @@
 {
   "name": "romm-sd",
   "productName": "ROMM-SD",
-  "private": true,
+  "private": false,
+  "license": "GPL-3.0-only",
   "version": "0.0.0",
   "type": "module",
   "main": "main.js",
@@ -26,6 +27,11 @@
       "target": [
         "AppImage"
       ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "kevincardona",
+      "repo": "RomM-SD"
     }
   },
   "scripts": {
@@ -36,6 +42,7 @@
   },
   "dependencies": {
     "@kmamal/sdl": "^0.11.13",
+    "electron-updater": "^6.8.3",
     "node-addon-api": "^8.8.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"

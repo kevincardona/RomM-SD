@@ -13,6 +13,22 @@ import { resolveInstallPaths, biosBasePath } from './biosPaths.js';
 
 export { resolveInstallPaths, biosBasePath };
 
+export async function resolvePs3LaunchPath(localPath) {
+  try {
+    const stat = await fs.stat(localPath);
+    if (!stat.isDirectory()) return localPath;
+    const candidates = [
+      path.join(localPath, 'PS3_GAME', 'USRDIR', 'EBOOT.BIN'),
+      path.join(localPath, 'USRDIR', 'EBOOT.BIN'),
+      path.join(localPath, 'EBOOT.BIN'),
+    ];
+    for (const c of candidates) {
+      try { await fs.access(c); return c; } catch {}
+    }
+  } catch {}
+  return localPath;
+}
+
 export function getEmulatorCommands(emuFolder, localPath) {
   const L = LAUNCHERS_DIR;
   const commands = [];
@@ -125,7 +141,8 @@ export async function launchGame({ localPath, emuFolder }, { logInfo, logError }
   if (localPath.toLowerCase().endsWith('.sav') || localPath.toLowerCase().endsWith('.srm')) {
     return { success: false, error: 'You are trying to launch a save file (.sav/.srm) instead of the actual game ROM. Please select the game file instead.' };
   }
-  const commands = getEmulatorCommands(emuFolder, localPath);
+  const resolvedPath = emuFolder === 'ps3' ? await resolvePs3LaunchPath(localPath) : localPath;
+  const commands = getEmulatorCommands(emuFolder, resolvedPath);
   if (process.platform === 'win32') commands.push(`start "" "${localPath}"`);
   else if (process.platform === 'darwin') commands.push(`open "${localPath}"`);
   else commands.push(`xdg-open "${path.dirname(localPath)}"`);

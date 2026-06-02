@@ -8,9 +8,19 @@ const STICK_RELEASE = 0.30;
 
 const NAV_MAP: Record<string, string> = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
 
+// Cross-source dedup: prevents a single physical stick/dpad push from
+// navigating twice because Steam Deck's Steam Input reports both a joystick
+// device AND a virtual gamepad device (or maps stick→dpad buttons).
+// 60 ms is well below REPEAT_INTERVAL (130 ms), so held-key repeats pass through.
+const DIR_DEDUP_MS = 60;
+const lastDirFire: Record<string, number> = {};
+
 function fireNavKey(direction: string) {
   const key = NAV_MAP[direction];
   if (!key) return;
+  const now = Date.now();
+  if (now - (lastDirFire[direction] || 0) < DIR_DEDUP_MS) return;
+  lastDirFire[direction] = now;
   const el = document.activeElement || document.body;
   el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }
@@ -110,7 +120,7 @@ export function useController({
       return;
     }
     if (state !== 'down') return;
-    if (disabled) return;
+    if (disabled || !windowFocused.current) return;
     const inText = isTextFieldFocused();
     const inModal = !!(document.activeElement as HTMLElement | null)?.closest('.modal-overlay');
 
@@ -132,6 +142,7 @@ export function useController({
       }
       case 'b': {
         if (inText) { fireKey('Escape'); return; }
+        if (inModal) { fireKey('Escape'); return; }
         if (activateActive()) return;
         if (onBack) { onBack(); return; }
         fireKey('Escape');
@@ -165,7 +176,7 @@ export function useController({
   }, [onSearchFocus, onConfirm, onBack, onLetterPrev, onLetterNext, onContextMenu, press, disabled]);
 
   const handleAxis = useCallback(({ axis, value }: { axis: string; value: number }) => {
-    if (disabled) return;
+    if (disabled || !windowFocused.current) return;
     let direction: string | null = null;
     if (axis === 'leftX') {
       if (value >  STICK_ENGAGE) direction = 'right';

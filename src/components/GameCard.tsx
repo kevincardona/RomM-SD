@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import AuthImage from './AuthImage';
 import Focusable from './Focusable';
 import type { Game, Config } from '../vite-env';
@@ -12,7 +12,7 @@ interface GameCardProps {
   id?: string;
 }
 
-export default function GameCard({ game, token, onClick, onContextMenu, config, id }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, token, onClick, onContextMenu, config, id }: GameCardProps) {
   return (
     <Focusable
       id={id}
@@ -38,4 +38,6 @@ export default function GameCard({ game, token, onClick, onContextMenu, config, 
       )}
     </Focusable>
   );
-}
+});
+
+export default GameCard;

@@ -11,6 +11,7 @@ export async function ensureConfigDir() {
 }
 
 export function getConfigPath() { return CONFIG_FILE; }
+export function getConfigDir() { return CONFIG_DIR; }
 export function getLogPath() { return LOG_FILE; }
 
 export async function readConfig() {

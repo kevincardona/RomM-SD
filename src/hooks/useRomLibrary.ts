@@ -64,14 +64,13 @@ export function useRomLibrary() {
 
   const loadLibrary = useCallback(async (url: string, token: string, basePath: string): Promise<LibraryLoadResult | null> => {
     try {
-      const cached = localStorage.getItem('romm_library');
+      const cached = await window.electronAPI!.getLibraryCache();
       if (cached) {
-        const lib: Library = JSON.parse(cached);
-        await processLibrary(lib, basePath);
+        await processLibrary(cached, basePath);
         setLoading(false);
       }
       const lib = await fetchLibrary(url, token);
-      localStorage.setItem('romm_library', JSON.stringify(lib));
+      await window.electronAPI!.saveLibraryCache(lib);
       await processLibrary(lib, basePath);
       setLoading(false);
       return { platforms: Object.keys(lib.platforms).sort(), collections: Object.keys(lib.collections).sort() };
@@ -185,10 +184,23 @@ export function useRomLibrary() {
     updateGameStatus(game, false);
   }, [updateGameStatus]);
 
+  const rescanLibrary = useCallback(async (): Promise<LibraryLoadResult | null> => {
+    setError('');
+    try {
+      const cached = await window.electronAPI!.getLibraryCache();
+      if (!cached) return null;
+      await processLibrary(cached, config.emudeckPath);
+      return { platforms: Object.keys(cached.platforms).sort(), collections: Object.keys(cached.collections).sort() };
+    } catch (err: any) {
+      setError(`Rescan failed: ${err.message}`);
+      return null;
+    }
+  }, [config.emudeckPath, processLibrary]);
+
   return {
     config, setConfig, updateConfig, library, loading, error,
     selectedGame, setSelectedGame,
-    saveAndConnect, loadLibrary, downloadGame, deleteGame,
+    saveAndConnect, loadLibrary, rescanLibrary, downloadGame, deleteGame,
     showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
   };
 }

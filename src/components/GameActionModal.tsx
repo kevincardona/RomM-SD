@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from './Modal';
+import AuthImage from './AuthImage';
 import { isBrowserPlaySupported, browserPlayUnsupportedReason } from '../browserPlaySupport';
 import type { Game, Config } from '../vite-env';
 
@@ -88,118 +89,192 @@ export default function GameActionModal({ game, onClose, onDownload, onDelete, c
         emuFolder: game.emuFolder,
         localPath: game.localPath,
         coverUrl: game.coverUrl,
+        token: config?.token,
       });
-      if (res.success) setSuccessMsg('Added to Steam! Restart Steam, then look for the game in your library. The cover art will appear after Steam rescans your shortcuts.');
+      if (res.success) setSuccessMsg('Added to Steam! Restart Steam to see it in your library.');
       else setErrorMsg(res.error);
     } catch (err: any) { setErrorMsg(err.message); }
   };
 
+  const handleAddBrowserGameToSteam = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await window.electronAPI!.addBrowserGameToSteam({
+        appName: game.title,
+        romId: game.id,
+        coverUrl: game.coverUrl,
+        token: config?.token,
+      });
+      if (res.success) setSuccessMsg(`Added "${game.title} (Browser)" to Steam! Restart Steam to see it in your library.`);
+      else setErrorMsg(res.error);
+    } catch (err: any) { setErrorMsg(err.message); }
+  };
+
+  const isDownloading = game.downloadProgress !== undefined && game.downloadProgress < 100;
+  const browserSupported = isBrowserPlaySupported(game.emuFolder);
+  const browserUnsupportedReason = browserSupported ? null : browserPlayUnsupportedReason(game.emuFolder);
+
   return (
-    <Modal onClose={onClose} maxWidth="500px">
+    <Modal onClose={onClose} maxWidth="520px">
       {() => (
         <>
-          <h2>{game.title}</h2>
-          <div style={{ color: 'var(--text-muted)', marginBottom: '20px' }}>
-            <div>Status: {game.downloaded ? (justCompleted ? 'Just downloaded!' : 'Downloaded locally') : 'Available on RomM server'}</div>
-            {game.downloaded && (
-              <div style={{ padding: '10px 0', borderTop: '1px solid var(--border)', marginTop: '10px' }}>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '5px' }}>Location:</div>
-                <div style={{ fontSize: '0.7rem', wordBreak: 'break-all' }}>{game.localPath}</div>
-
-                {config?.saveSyncEnabled && (
-                  <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px', marginTop: '12px', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      tabIndex={0}
-                      checked={autoSync}
-                      onChange={e => setAutoSync(e.target.checked)}
-                      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
-                      style={{ width: '16px', height: '16px', flex: '0 0 auto', margin: 0 }}
-                    />
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Auto-sync saves (push when emulator writes)
-                    </span>
-                  </label>
-                )}
-
-                <button className="btn" style={{ width: '100%', marginTop: '15px', background: '#4caf50', color: 'white', borderColor: '#4caf50' }} tabIndex={0} onClick={handlePlay} autoFocus>▶ Play Now</button>
-                <button className="btn" style={{ width: '100%', marginTop: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'transparent' }} tabIndex={0} onClick={handleAddToSteam}>+ Add to Steam</button>
-              </div>
+          {/* Header: cover art + title + status */}
+          <div style={{ display: 'flex', gap: '14px', marginBottom: '18px', alignItems: 'flex-start' }}>
+            {game.coverUrl ? (
+              <AuthImage
+                src={game.coverUrl}
+                token={config?.token}
+                className="game-cover"
+                style={{
+                  width: '72px',
+                  flexShrink: 0,
+                  borderRadius: '6px',
+                  border: '1px solid var(--panel-border)',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '72px', flexShrink: 0, aspectRatio: '3/4', borderRadius: '6px',
+                background: 'var(--surface)', border: '1px solid var(--panel-border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.6rem', color: 'var(--text-muted)',
+              }}>🎮</div>
             )}
-            {game.downloaded && fileSize && <div>Size: {fileSize}</div>}
-            {successMsg && <div style={{ marginTop: '15px', padding: '10px', background: 'rgba(76,175,80,0.2)', color: '#4caf50', borderRadius: '4px', fontSize: '0.85rem' }}>{successMsg}</div>}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h2 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', lineHeight: 1.3, wordBreak: 'break-word' }}>
+                {game.title}
+              </h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{
+                  fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.8px',
+                  background: 'rgba(0, 229, 255, 0.1)', color: 'var(--accent-color)',
+                  padding: '2px 8px', borderRadius: '4px', fontWeight: 600,
+                }}>{game.platform}</span>
+                {game.downloaded ? (
+                  <span style={{ fontSize: '0.75rem', color: justCompleted ? '#4caf50' : 'var(--text-muted)' }}>
+                    {justCompleted ? '✓ Just downloaded!' : '✓ Downloaded'}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>On server</span>
+                )}
+              </div>
+              {game.downloaded && game.localPath && (
+                <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.4 }}>
+                  {game.localPath}
+                  {fileSize && <span style={{ marginLeft: '6px', opacity: 0.7 }}>· {fileSize}</span>}
+                </div>
+              )}
+            </div>
           </div>
 
+          {/* Auto-sync toggle */}
+          {game.downloaded && config?.saveSyncEnabled && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                tabIndex={0}
+                checked={autoSync}
+                onChange={e => setAutoSync(e.target.checked)}
+                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.currentTarget.checked = !e.currentTarget.checked; e.currentTarget.dispatchEvent(new Event('change', { bubbles: true })); } }}
+                style={{ width: '16px', height: '16px', flex: '0 0 auto', margin: 0 }}
+              />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Auto-sync saves on play</span>
+            </label>
+          )}
+
+          {/* Download progress */}
+          {isDownloading && (
+            <div style={{ marginBottom: '14px' }}>
+              <div className="progress-bar-label">
+                <span>Downloading</span>
+                <span>{Math.round(game.downloadProgress!)}%</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-bar-fill" style={{ width: `${Math.max(game.downloadProgress!, 2)}%` }}></div>
+              </div>
+            </div>
+          )}
+
+          {/* Status messages */}
           {errorMsg && (
-            <div style={{ marginBottom: '20px', padding: '10px', background: 'rgba(255,0,0,0.2)', color: '#ff4444', borderRadius: '4px', fontSize: '0.85rem' }}>
+            <div style={{ marginBottom: '14px', padding: '10px 12px', background: 'rgba(255,68,68,0.12)', color: '#ff6b6b', borderRadius: '6px', fontSize: '0.82rem', lineHeight: 1.4 }}>
               {errorMsg}
             </div>
           )}
-
-          {game.downloadProgress !== undefined && game.downloadProgress < 100 && (
-            <div style={{ marginBottom: '20px' }}>
-              <div className="progress-bar-label">
-                <span>Downloading</span>
-                <span>{Math.round(game.downloadProgress)}%</span>
-              </div>
-              <div className="progress-bar">
-                <div className="progress-bar-fill" style={{ width: `${Math.max(game.downloadProgress, 2)}%` }}></div>
-              </div>
+          {successMsg && (
+            <div style={{ marginBottom: '14px', padding: '10px 12px', background: 'rgba(76,175,80,0.12)', color: '#4caf50', borderRadius: '6px', fontSize: '0.82rem', lineHeight: 1.4 }}>
+              {successMsg}
             </div>
           )}
 
-          {(() => {
-            if (!config?.browserPlayEnabled) return null;
-            const supported = isBrowserPlaySupported(game.emuFolder);
-            const reason = supported ? null : browserPlayUnsupportedReason(game.emuFolder);
-            return (
-              <div style={{
-                background: supported ? 'rgba(255, 152, 0, 0.06)' : 'rgba(255, 68, 68, 0.06)',
-                border: `1px solid ${supported ? 'rgba(255, 152, 0, 0.25)' : 'rgba(255, 68, 68, 0.25)'}`,
-                borderRadius: '8px',
-                padding: '10px 12px',
-                marginBottom: '12px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: supported ? '6px' : '4px' }}>
-                  <span style={{
-                    fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '1px',
-                    background: supported ? 'rgba(255, 152, 0, 0.18)' : 'rgba(255, 68, 68, 0.18)',
-                    color: supported ? '#ff9800' : '#ff6b6b',
-                    padding: '2px 6px', borderRadius: '3px', fontWeight: 700,
-                  }}>EXPERIMENTAL</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {supported ? 'Stream without downloading' : 'Not streamable'}
-                  </span>
-                </div>
-                {supported ? (
-                  <button
-                    className="btn"
-                    style={{ width: '100%', background: 'rgba(0, 229, 255, 0.12)', color: 'var(--accent-color)', borderColor: 'rgba(0, 229, 255, 0.4)' }}
-                    tabIndex={0}
-                    onClick={handlePlayInBrowser}
-                    disabled={streaming}
-                  >
-                    {streaming ? 'Opening stream…' : '🌐 Play in Browser'}
-                  </button>
-                ) : (
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                    {reason}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {/* Primary actions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {game.downloaded && (
+              <button
+                className="btn"
+                style={{ background: '#4caf50', color: 'white', borderColor: '#4caf50', fontWeight: 600 }}
+                tabIndex={0}
+                onClick={handlePlay}
+                autoFocus
+              >▶ Play Now</button>
+            )}
 
-          <div className="modal-actions" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Browser play */}
+            {config?.browserPlayEnabled && browserSupported && (
+              <button
+                className="btn"
+                style={{ background: 'rgba(0,229,255,0.1)', color: 'var(--accent-color)', borderColor: 'rgba(0,229,255,0.35)' }}
+                tabIndex={0}
+                onClick={handlePlayInBrowser}
+                disabled={streaming}
+              >
+                {streaming ? 'Opening…' : '🌐 Play in Browser'}
+              </button>
+            )}
+
+            {game.downloaded && (
+              <button className="btn" tabIndex={0} onClick={handleAddToSteam} style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'var(--panel-border)' }}>
+                + Add to Steam
+              </button>
+            )}
+
+            {config?.browserPlayEnabled && browserSupported && (
+              <button className="btn" tabIndex={0} onClick={handleAddBrowserGameToSteam} style={{ background: 'rgba(255,255,255,0.07)', borderColor: 'var(--panel-border)' }}>
+                + Add to Steam (Browser)
+              </button>
+            )}
+
+            {config?.browserPlayEnabled && !browserSupported && browserUnsupportedReason && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', padding: '6px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--panel-border)', lineHeight: 1.4 }}>
+                🌐 Browser play: {browserUnsupportedReason}
+              </div>
+            )}
+
+            <div style={{ borderTop: '1px solid var(--panel-border)', margin: '4px 0' }} />
+
             {game.downloaded ? (
-              <button className="btn" tabIndex={0} onClick={() => onDelete(game)} autoFocus={!justCompleted && !config?.browserPlayEnabled}>Remove Local File</button>
+              <button className="btn" tabIndex={0} onClick={() => onDelete(game)}>Remove Local File</button>
             ) : (
-              <button className="btn btn-primary" tabIndex={0} onClick={() => onDownload(game)} disabled={game.downloadProgress !== undefined && game.downloadProgress < 100} autoFocus={!config?.browserPlayEnabled}>
-                {game.downloadProgress !== undefined && game.downloadProgress < 100 ? `Downloading ${Math.round(game.downloadProgress)}%` : 'Download to EmuDeck'}
+              <button
+                className="btn btn-primary"
+                tabIndex={0}
+                onClick={() => onDownload(game)}
+                disabled={isDownloading}
+                autoFocus={!game.downloaded}
+              >
+                {isDownloading ? `Downloading ${Math.round(game.downloadProgress!)}%` : 'Download'}
               </button>
             )}
             <button className="btn" tabIndex={0} onClick={onClose}>Close</button>
           </div>
+
+          {config?.browserPlayEnabled && browserSupported && (
+            <div style={{ marginTop: '10px', fontSize: '0.7rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Browser saves sync to your RomM server. Use <strong style={{ color: 'var(--text-main)' }}>F2</strong> to save state, <strong style={{ color: 'var(--text-main)' }}>F4</strong> to load.
+            </div>
+          )}
         </>
       )}
     </Modal>

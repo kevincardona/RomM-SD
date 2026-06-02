@@ -43,12 +43,16 @@ const SLUG_ALIASES = {
 };
 
 // Switch keys are NOT in EmuDeck's bios folder — emulators look in their own
-// config dirs. This special-cases prod.keys / title.keys to the right places
-// so they work out of the box after download.
+// config dirs. We write to both native (~/.config/…) and Flatpak
+// (~/.var/app/…) locations so the keys land correctly regardless of how
+// Yuzu/Ryujinx was installed.
 const SWITCH_KEY_RULES = [
   { match: /^prod\.keys?$/i, yuzu: 'keys', ryujinx: 'system' },
   { match: /^title\.keys?$/i, yuzu: 'keys', ryujinx: 'system' },
 ];
+
+const FLATPAK_YUZU    = path.join(HOME, '.var', 'app', 'org.yuzu_emu.yuzu',    'config', 'yuzu');
+const FLATPAK_RYUJINX = path.join(HOME, '.var', 'app', 'org.ryujinx.Ryujinx', 'config', 'Ryujinx');
 
 function isSwitchKey(filename) {
   return SWITCH_KEY_RULES.some(r => r.match.test(filename));
@@ -58,8 +62,12 @@ function switchKeyTargets(filename) {
   const rule = SWITCH_KEY_RULES.find(r => r.match.test(filename));
   if (!rule) return [];
   return [
-    { emulator: 'Yuzu', path: `${HOME}/.config/yuzu/${rule.yuzu}/${filename}` },
-    { emulator: 'Ryujinx', path: `${HOME}/.config/Ryujinx/${rule.ryujinx}/${filename}` },
+    // Native / EmuDeck paths
+    { emulator: 'Yuzu',             path: `${HOME}/.config/yuzu/${rule.yuzu}/${filename}`,             kind: 'switch-key' },
+    { emulator: 'Ryujinx',          path: `${HOME}/.config/Ryujinx/${rule.ryujinx}/${filename}`,       kind: 'switch-key' },
+    // Flatpak paths (EmuDeck installs these via Flatpak on desktop Linux)
+    { emulator: 'Yuzu (Flatpak)',    path: path.join(FLATPAK_YUZU,    rule.yuzu,     filename),         kind: 'switch-key' },
+    { emulator: 'Ryujinx (Flatpak)', path: path.join(FLATPAK_RYUJINX, rule.ryujinx, filename),         kind: 'switch-key' },
   ];
 }
 
@@ -80,9 +88,14 @@ export function resolveInstallPaths({ fsSlug, slug, fileName, emudeckPath, layou
   const expandedBios = expandHome(emudeckPath || '~/Emulation/roms').replace(/\/roms$/, '/bios');
   const expandedRoms = expandHome(emudeckPath || '~/Emulation/roms');
 
-  // Switch keys always go to emulator config dirs, regardless of layout.
-  if (slug === 'switch' || fsSlug === 'switch' || isSwitchKey(fileName)) {
-    return switchKeyTargets(fileName).map(t => ({ ...t, kind: 'switch-key' }));
+  // Switch decryption keys go to emulator config dirs (not the BIOS folder).
+  if (isSwitchKey(fileName)) {
+    return switchKeyTargets(fileName);
+  }
+  // Other Switch-platform files (firmware ZIPs, NCA packages) get staged in the
+  // BIOS folder so the user can install them via Ryujinx → Tools → Install Firmware.
+  if (slug === 'switch' || fsSlug === 'switch') {
+    return [{ emulator: 'Ryujinx (staged)', path: path.join(expandedBios, 'switch', fileName), kind: 'switch-firmware' }];
   }
 
   const sub = chooseSubfolder({ fsSlug, slug, fileName });

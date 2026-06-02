@@ -9,10 +9,11 @@ import GameActionModal from './components/GameActionModal';
 import LibraryPage from './pages/LibraryPage';
 import CollectionsPage from './pages/CollectionsPage';
 import SettingsPage from './pages/SettingsPage';
-import FirmwarePage from './pages/FirmwarePage';
+import EmulatorsPage from './pages/EmulatorsPage';
 import SaveSyncPage from './pages/SaveSyncPage';
 import WelcomeWizard from './components/WelcomeWizard';
 import ErrorBoundary from './components/ErrorBoundary';
+import UpdateBanner from './components/UpdateBanner';
 import { isBrowserPlaySupported } from './browserPlaySupport';
 import type { Game, Tab } from './vite-env';
 
@@ -20,7 +21,7 @@ export default function App() {
   const {
     config, setConfig, updateConfig, library, loading, error,
     selectedGame, setSelectedGame,
-    saveAndConnect, downloadGame, deleteGame,
+    saveAndConnect, rescanLibrary, downloadGame, deleteGame,
     showWizard, completeWizard, reopenWizard, closeWizard, testConnection,
   } = useRomLibrary();
 
@@ -34,6 +35,22 @@ export default function App() {
   const onLetterNext = useCallback(() => letterNavRef.current?.letterOffset(1), []);
 
   useSpatialNavigation(false);
+
+  const deepLinkChecked = useRef(false);
+  useEffect(() => {
+    if (!config?.url || deepLinkChecked.current) return;
+    deepLinkChecked.current = true;
+    window.electronAPI?.getPendingDeepLink?.().then((deepLink) => {
+      if (deepLink?.type === 'browser-play' && deepLink.romId) {
+        window.electronAPI?.openBrowserPlay({
+          serverUrl: config.url,
+          romId: deepLink.romId,
+          romName: 'Browser Game',
+          token: config.token,
+        });
+      }
+    });
+  }, [config?.url, config?.token]);
 
   const [activeTab, setActiveTab] = useState<Tab>('library_all');
   const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
@@ -85,6 +102,17 @@ export default function App() {
     if (game) setSelectedGame(game);
   }, [library.all, setSelectedGame]);
 
+  const handleConfigReset = useCallback(() => {
+    setConfig({
+      url: '', username: '', password: '',
+      token: '', emudeckPath: '~/Emulation/roms',
+      gridSize: 'medium', showGameTitles: true,
+      saveSyncEnabled: false, browserPlayEnabled: false,
+      biosLayout: 'emudeck',
+    });
+    window.electronAPI?.clearLibraryCache();
+  }, [setConfig]);
+
   useController({ onSearchFocus, onLetterPrev, onLetterNext, onContextMenu }, false);
 
   return (
@@ -96,6 +124,8 @@ export default function App() {
       />
 
       <div className="main-content">
+        <UpdateBanner />
+
         {loading && (
           <div className="loading-container">
             <div className="loading-brand">ROMM-SD</div>
@@ -106,7 +136,16 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <ErrorBoundary key="settings">
-            <SettingsPage config={config} setConfig={setConfig} updateConfig={updateConfig} onSave={saveAndConnect} error={error} onRerunWizard={reopenWizard} />
+            <SettingsPage
+              config={config}
+              setConfig={setConfig}
+              updateConfig={updateConfig}
+              onSave={saveAndConnect}
+              error={error}
+              onRerunWizard={reopenWizard}
+              onRescanLibrary={rescanLibrary}
+              onConfigReset={handleConfigReset}
+            />
           </ErrorBoundary>
         )}
 
@@ -119,7 +158,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'firmware' && <FirmwarePage config={config} />}
+        {activeTab === 'emulators' && <EmulatorsPage config={config} />}
         {activeTab === 'savesync' && <SaveSyncPage library={library} config={config} enabled={!!config.saveSyncEnabled} />}
 
         {((activeTab === 'platforms' || activeTab === 'downloaded' || activeTab === 'library_all') || (activeTab === 'collections' && !showCollectionsRoot)) && (
