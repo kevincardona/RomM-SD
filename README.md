@@ -8,6 +8,8 @@
 
 Built for Steam Deck but runs on any Linux desktop. Full controller navigation, one-click Steam integration, BIOS/firmware management, and cloud save sync.
 
+![ROMM-SD library view](docs/screenshot.png)
+
 > **⚠ Personal project — not actively maintained.**
 > This is a personal tool built for my own use. I share it in case it's useful or serves as inspiration for your own fork. Issues and PRs are welcome but I make no guarantees about response times or continued development. Fork freely under the GPL v3.
 

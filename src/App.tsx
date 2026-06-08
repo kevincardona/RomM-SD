@@ -73,12 +73,15 @@ export default function App() {
     if (activeTab === 'library_all') list = library.all;
     else if (activeTab === 'platforms') list = library.platforms[selectedPlatform || ''] || [];
     else if (activeTab === 'collections') list = library.collections[selectedCollection || ''] || [];
-    else if (activeTab === 'downloaded') list = library.all.filter(g => g.downloaded || isBrowserPlaySupported(g.emuFolder));
+    else if (activeTab === 'downloaded') {
+      list = library.all.filter(g => g.downloaded || (config?.browserPlayEnabled && isBrowserPlaySupported(g.emuFolder)));
+      if (selectedPlatform) list = list.filter(g => g.platform === selectedPlatform);
+    }
     else list = [];
     if (downloadedOnly) list = list.filter(g => g.downloaded);
     if (playInBrowserOnly) list = list.filter(g => isBrowserPlaySupported(g.emuFolder));
     return list;
-  }, [activeTab, selectedPlatform, selectedCollection, downloadedOnly, playInBrowserOnly, library]);
+  }, [activeTab, selectedPlatform, selectedCollection, downloadedOnly, playInBrowserOnly, library, config?.browserPlayEnabled]);
 
   const libraryTitle = useMemo(() => {
     if (activeTab === 'platforms') return selectedPlatform || 'Library';
@@ -173,7 +176,7 @@ export default function App() {
             selectedPlatform={selectedPlatform}
             onPlatformChange={(p) => {
               setSelectedPlatform(p);
-              if (p) setActiveTab('platforms');
+              if (p && activeTab !== 'downloaded') setActiveTab('platforms');
             }}
             downloadedOnly={downloadedOnly}
             onDownloadedChange={setDownloadedOnly}

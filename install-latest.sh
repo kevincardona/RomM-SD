@@ -104,9 +104,12 @@ fi
 
 # ── desktop entry ─────────────────────────────────────────────────────────
 
-# Prefer extracted AppRun (works without fuse2); fall back to AppImage
+# Prefer extracted AppRun (works without fuse2); fall back to AppImage.
+# APPDIR must be set explicitly — AppRun's auto-detection searches for a file
+# named after $1 ("--no-sandbox"), never finds one, and ends up with APPDIR=""
+# which makes it try to exec /romm-sd (root) and crash immediately.
 if [ -f "$APPDIR/AppRun" ]; then
-  EXEC_CMD="$APPDIR/AppRun --no-sandbox"
+  EXEC_CMD="env APPDIR=$APPDIR $APPDIR/AppRun --no-sandbox"
 else
   EXEC_CMD="$DEST --no-sandbox"
 fi

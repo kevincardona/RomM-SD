@@ -135,10 +135,15 @@ export async function addSelfToSteam({ logInfo }) {
   if (!selfPaths) {
     return { success: false, error: 'Not running as an AppImage. Add ROMM-SD to Steam manually by pointing it at the .AppImage file.' };
   }
-  const { exe, iconBase } = selfPaths;
+  const { exe: apprun, iconBase } = selfPaths;
   const extractedIcon = path.join(iconBase, 'romm-sd.png');
-  const icon = (await fileExists(extractedIcon)) ? extractedIcon : exe;
-  const launchOptions = '--no-sandbox';
+  const icon = (await fileExists(extractedIcon)) ? extractedIcon : apprun;
+  // AppRun auto-detects APPDIR by searching for a file named after $1
+  // ("--no-sandbox"), which never exists, leaving APPDIR="" → crash.
+  // Use /usr/bin/env to inject APPDIR before calling AppRun, the same way
+  // addToSteam uses /usr/bin/env to pass QT_XCB_GL_INTEGRATION.
+  const exe = '/usr/bin/env';
+  const launchOptions = `APPDIR="${path.dirname(apprun)}" "${apprun}" --no-sandbox`;
 
   const appName = 'ROMM-SD';
   const users = await listUserIds();
@@ -218,10 +223,11 @@ export async function addBrowserGameToSteam({ appName, romId, coverUrl, token },
   if (!selfPaths) {
     return { success: false, error: 'Not running as an AppImage. Browser game Steam shortcuts can only be added when ROMM-SD is installed as an AppImage.' };
   }
-  const { exe } = selfPaths;
+  const { exe: apprun } = selfPaths;
 
   const browserName = `${appName} (Browser)`;
-  const launchOptions = `--no-sandbox --play-browser-rom ${romId}`;
+  const exe = '/usr/bin/env';
+  const launchOptions = `APPDIR="${path.dirname(apprun)}" "${apprun}" --no-sandbox --play-browser-rom ${romId}`;
 
   const users = await listUserIds();
   if (users.length === 0) return { success: false, error: 'Steam userdata directory not found.' };
