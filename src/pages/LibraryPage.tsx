@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, UIEvent } from 'react';
 import GameCard from '../components/GameCard';
 import FilterBar from '../components/FilterBar';
+import ControllerHints from '../components/ControllerHints';
 import type { Game, Library, Config } from '../vite-env';
 
 interface LetterNav {
@@ -190,6 +191,14 @@ export default function LibraryPage({
           onBackToCollectionsRoot={onBackToCollectionsRoot ?? undefined}
         />
       )}
+      <ControllerHints hints={[
+        { key: '▲▼◀▶', label: 'Navigate' },
+        { key: 'A', label: 'Open' },
+        { key: 'B', label: 'Back' },
+        { key: 'Y', label: 'Search' },
+        { key: 'LT/RT', label: 'Jump Letter' },
+        { key: 'Start', label: 'Options' },
+      ]} />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         <div className="content-area" ref={contentRef} onScroll={handleScroll} style={{ flex: 1 }}>
           <div className="game-grid" style={{ '--grid-card-width': gridVar } as React.CSSProperties}>
